@@ -1,0 +1,88 @@
+// src/router/index.ts
+// Vue Router 路由配置
+// 定义所有页面的路由路径、懒加载组件、鉴权元信息
+// 导航守卫：未登录时拦截需要认证的路由
+
+import { createRouter, createWebHistory } from 'vue-router'
+import { useAuthStore } from '@/store/auth'
+
+const router = createRouter({
+  // 使用 HTML5 History 模式（无 # 号的路由）
+  history: createWebHistory(import.meta.env.BASE_URL),
+  routes: [
+    // 登录页（无需认证）
+    {
+      path: '/login',
+      name: 'login',
+      component: () => import('@/views/Login.vue'),
+      meta: { requiresAuth: false },
+    },
+    // 注册页（无需认证）
+    {
+      path: '/register',
+      name: 'register',
+      component: () => import('@/views/Register.vue'),
+      meta: { requiresAuth: false },
+    },
+    // 带布局的主页面（需要登录认证）
+    {
+      path: '/',
+      component: () => import('@/components/AppLayout.vue'),
+      meta: { requiresAuth: true },
+      children: [
+        {
+          path: '',
+          redirect: '/dashboard',
+        },
+        {
+          path: 'dashboard',
+          name: 'dashboard',
+          component: () => import('@/views/Dashboard.vue'),
+          meta: { title: '控制台' },
+        },
+        {
+          path: 'devices',
+          name: 'devices',
+          component: () => import('@/views/Devices.vue'),
+          meta: { title: '设备管理' },
+        },
+        {
+          path: 'control',
+          name: 'control',
+          component: () => import('@/views/Control.vue'),
+          meta: { title: '控制面板' },
+        },
+        {
+          path: 'ai-analysis',
+          name: 'ai-analysis',
+          component: () => import('@/views/AiAnalysis.vue'),
+          meta: { title: 'AI 分析' },
+        },
+      ],
+    },
+    // 404 兜底：重定向到控制台
+    {
+      path: '/:pathMatch(.*)*',
+      redirect: '/dashboard',
+    },
+  ],
+})
+
+// 全局导航守卫：在路由跳转前执行
+router.beforeEach((to) => {
+  const authStore = useAuthStore()
+  // 支持 demo 模式：?demo=true 跳过登录直接进入
+  const isDemo = new URLSearchParams(window.location.search).get('demo') === 'true'
+
+  // 需要认证但用户未登录：重定向到登录页
+  if (to.meta.requiresAuth && !authStore.isLoggedIn && !isDemo) {
+    return { name: 'login' }
+  }
+
+  // 已登录用户访问登录页或注册页：重定向到控制台
+  if ((to.name === 'login' || to.name === 'register') && authStore.isLoggedIn) {
+    return { path: '/dashboard' }
+  }
+})
+
+export default router

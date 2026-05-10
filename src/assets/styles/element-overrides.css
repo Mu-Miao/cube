@@ -1,0 +1,269 @@
+/* src/assets/styles/element-overrides.css */
+/* Element Plus 组件暗色主题覆盖 */
+/* 将 Element Plus 默认的白色/浅色主题改为与 main.css 一致的深空青色风格 */
+
+/* === 通用按钮 === */
+.el-button {
+  min-height: 40px;
+  font-size: 15px;
+  font-family: var(--font-body);
+  font-weight: 600;
+  border: none;
+  border-radius: var(--radius-sm);
+  transition: all var(--transition-base);
+}
+
+.el-button--primary {
+  background: var(--color-cube-primary) !important;
+  color: var(--bg-canvas) !important;
+  box-shadow: 0 0 16px rgba(6, 182, 212, 0.3), 0 0 4px rgba(6, 182, 212, 0.15);
+}
+.el-button--primary:hover {
+  background: var(--primary-hover) !important;
+  box-shadow: 0 0 20px rgba(6, 182, 212, 0.25);
+}
+
+.el-button--success {
+  background: var(--color-success) !important;
+  border-color: var(--color-success) !important;
+}
+
+.el-button--danger {
+  background: var(--color-danger) !important;
+  border-color: var(--color-danger) !important;
+}
+
+.el-button--text {
+  color: var(--color-cube-primary) !important;
+}
+.el-button--text:hover {
+  color: var(--primary-light) !important;
+}
+
+/* === 输入框 === */
+.el-input__wrapper {
+  background-color: rgba(17, 24, 50, 0.6) !important;
+  border: 1px solid var(--border-default) !important;
+  border-radius: var(--radius-sm) !important;
+  box-shadow: none !important;
+  transition: border-color var(--transition-base) !important;
+}
+.el-input__wrapper:hover {
+  border-color: rgba(6, 182, 212, 0.5) !important;
+}
+.el-input__wrapper.is-focus {
+  border-color: var(--color-cube-primary) !important;
+  box-shadow: 0 0 8px rgba(6, 182, 212, 0.25) !important;
+}
+.el-input__inner {
+  color: var(--text-primary) !important;
+  font-family: var(--font-body);
+  font-size: 15px;
+}
+.el-input__inner::placeholder {
+  color: var(--text-disabled) !important;
+}
+
+/* === 表单标签 === */
+.el-form-item__label {
+  color: var(--text-primary) !important;
+  font-family: var(--font-display);
+  font-size: 13px !important;
+  letter-spacing: 0.5px;
+}
+
+/* === 卡片 === */
+.el-card {
+  background-color: var(--bg-card) !important;
+  border: 1px solid var(--border-default) !important;
+  color: var(--text-primary) !important;
+  border-radius: var(--radius-card) !important;
+}
+.el-card__header {
+  border-bottom: 1px solid var(--border-default) !important;
+  color: var(--text-primary) !important;
+  font-family: var(--font-display);
+  font-weight: 600;
+}
+.el-card__body {
+  color: var(--text-primary) !important;
+}
+
+/* === 表格 === */
+.el-table {
+  background: transparent !important;
+  color: var(--text-primary) !important;
+  font-family: var(--font-body);
+}
+.el-table th.el-table__cell {
+  background: rgba(17, 24, 50, 0.5) !important;
+  color: var(--text-secondary) !important;
+  border-color: var(--border-default) !important;
+  font-family: var(--font-display);
+  font-weight: 600;
+  font-size: 13px !important;
+  letter-spacing: 0.5px;
+}
+.el-table td.el-table__cell {
+  border-color: var(--border-default) !important;
+  color: var(--text-primary) !important;
+}
+.el-table tr {
+  background: transparent !important;
+}
+.el-table--enable-row-hover .el-table__body tr:hover > td {
+  background: var(--bg-hover) !important;
+}
+.el-table__empty-text {
+  color: var(--text-disabled) !important;
+}
+
+/* === 标签（Tag） === */
+.el-tag {
+  border: none !important;
+  font-family: var(--font-body);
+  font-weight: 500;
+}
+.el-tag--success {
+  background: rgba(16, 185, 129, 0.15) !important;
+  color: var(--color-success) !important;
+}
+.el-tag--danger {
+  background: rgba(239, 68, 68, 0.15) !important;
+  color: var(--color-danger) !important;
+}
+.el-tag--warning {
+  background: rgba(245, 158, 11, 0.15) !important;
+  color: var(--color-warning) !important;
+}
+.el-tag--info {
+  background: rgba(59, 130, 246, 0.15) !important;
+  color: var(--color-info) !important;
+}
+.el-tag--dark {
+  border: 1px solid rgba(6, 182, 212, 0.3) !important;
+}
+
+/* === 对话框 === */
+.el-dialog {
+  background-color: var(--bg-elevated) !important;
+  border-radius: var(--radius-lg) !important;
+  border: 1px solid var(--border-default) !important;
+  box-shadow: var(--shadow-lg) !important;
+}
+.el-dialog__header,
+.el-dialog__title,
+.el-dialog__body {
+  color: var(--text-primary) !important;
+}
+.el-dialog__header {
+  border-bottom: 1px solid var(--border-default) !important;
+}
+.el-dialog__footer {
+  border-top: 1px solid var(--border-default) !important;
+}
+
+/* === 通知 === */
+.el-notification {
+  background-color: var(--bg-elevated) !important;
+  border: 1px solid var(--border-default) !important;
+  border-radius: var(--radius-card) !important;
+}
+.el-notification__title {
+  color: var(--text-primary) !important;
+  font-family: var(--font-display) !important;
+}
+.el-notification__content {
+  color: var(--text-disabled) !important;
+}
+
+/* === 抽屉 === */
+.el-drawer {
+  background-color: var(--bg-elevated) !important;
+}
+.el-drawer__header,
+.el-drawer__title {
+  color: var(--text-primary) !important;
+}
+
+/* === 下拉选择器 === */
+.el-select-dropdown {
+  background-color: var(--bg-elevated) !important;
+  border: 1px solid var(--border-default) !important;
+  border-radius: var(--radius-sm) !important;
+}
+.el-select-dropdown__item {
+  color: var(--text-primary) !important;
+  font-family: var(--font-body);
+}
+.el-select-dropdown__item.is-hovering {
+  background-color: var(--bg-hover) !important;
+}
+.el-select-dropdown__item.is-selected {
+  color: var(--color-cube-primary) !important;
+  font-weight: 600;
+}
+
+/* === 选择器输入框 === */
+.el-select .el-input__wrapper {
+  background-color: rgba(17, 24, 50, 0.6) !important;
+}
+
+/* === 滑块 === */
+.el-slider__runway {
+  background-color: var(--border-default) !important;
+  border-radius: 4px !important;
+}
+.el-slider__bar {
+  background-color: var(--color-cube-primary) !important;
+}
+.el-slider__button {
+  border-color: var(--color-cube-primary) !important;
+  box-shadow: 0 0 16px rgba(6, 182, 212, 0.3), 0 0 4px rgba(6, 182, 212, 0.15) !important;
+}
+
+/* === 开关 === */
+.el-switch.is-checked .el-switch__core {
+  background-color: var(--color-cube-primary) !important;
+  border-color: var(--color-cube-primary) !important;
+}
+.el-switch__core {
+  background-color: var(--border-default) !important;
+  border-color: var(--border-default) !important;
+}
+
+/* === 消息提示 === */
+.el-message {
+  background-color: var(--bg-elevated) !important;
+  border: 1px solid var(--border-default) !important;
+  border-radius: var(--radius-card) !important;
+}
+.el-message__content {
+  color: var(--text-primary) !important;
+}
+
+/* === 分隔线 === */
+.el-divider {
+  border-color: var(--border-default) !important;
+}
+
+/* === 数字输入框 === */
+.el-input-number {
+  background-color: var(--bg-surface) !important;
+}
+.el-input-number .el-input__wrapper {
+  background-color: var(--bg-surface) !important;
+}
+
+/* === 加载遮罩 === */
+.el-loading-mask {
+  background-color: rgba(6, 10, 20, 0.7) !important;
+}
+.el-loading-spinner .circular {
+  stroke: var(--color-cube-primary) !important;
+}
+
+/* === 滚动条（Element Plus 组件内部） === */
+.el-scrollbar__wrap {
+  scrollbar-width: thin;
+}
