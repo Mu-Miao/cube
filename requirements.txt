@@ -1,0 +1,27 @@
+# Web 框架
+fastapi==0.115.0
+uvicorn[standard]==0.30.0
+
+# 异步 ORM
+sqlalchemy==2.0.35
+aiosqlite==0.20.0
+greenlet>=3.0.0
+
+# Pydantic 配置（新版有预编译 wheel，避免从源码编译）
+pydantic==2.9.0
+pydantic-settings==2.5.0
+
+# JWT 认证 & 密码加密
+python-jose[cryptography]==3.3.0
+bcrypt==5.0.0
+
+# MQTT 异步客户端
+aiomqtt==2.0.0
+
+# HTTP 客户端
+httpx==0.27.0
+
+# 工具
+python-multipart==0.0.12
+loguru==0.7.2
+python-dotenv==1.0.0
