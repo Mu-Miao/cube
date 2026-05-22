@@ -17,6 +17,7 @@ from app.models.user import User
 from app.schemas.base import ApiResponse
 from app.schemas.data import DeviceDataReport, DataUploadAck, SensorDataLatest, SensorDataHistoryItem
 from app.websocket.manager import ws_manager
+from app.services.alert_service import check_alerts
 
 router = APIRouter(prefix="/data", tags=["传感器数据"])
 
@@ -80,6 +81,13 @@ async def upload_sensor_data(
         "mold_risk": payload.data.mold_risk,
         "gas": payload.data.gas,
         "wifi_rssi": payload.data.wifi_rssi,
+    })
+
+    await check_alerts(payload.device_id, {
+        "gas": payload.data.gas,
+        "tvoc": payload.data.tvoc,
+        "eco2": payload.data.eco2,
+        "mold_risk": payload.data.mold_risk,
     })
 
     return DataUploadAck(

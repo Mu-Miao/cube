@@ -10,9 +10,17 @@ from sqlalchemy.orm import DeclarativeBase
 
 from app.config import settings
 
+# 将相对路径的数据库 URL 转为基于项目根目录的绝对路径，避免 CWD 影响路径解析
+_PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
+_raw_db_path = settings.DATABASE_URL.split("///")[-1]
+if not os.path.isabs(_raw_db_path):
+    _abs_db_path = _PROJECT_ROOT / _raw_db_path
+    settings.DATABASE_URL = f"sqlite+aiosqlite:///{_abs_db_path}"
+    _db_dir = str(_abs_db_path.parent)
+else:
+    _db_dir = os.path.dirname(_raw_db_path)
+
 # 确保数据库文件所在目录存在（SQLite 异步版不会自动创建目录）
-_db_path = settings.DATABASE_URL.split("///")[-1]
-_db_dir = os.path.dirname(_db_path)
 if _db_dir:
     Path(_db_dir).mkdir(parents=True, exist_ok=True)
 

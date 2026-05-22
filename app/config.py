@@ -40,6 +40,27 @@ class Settings(BaseSettings):
     # 设备心跳间隔 30 秒，超过 3 倍间隔（90 秒）未收到心跳则判定离线
     DEVICE_HEARTBEAT_TIMEOUT_SECONDS: int = 90
 
+    # === 告警阈值配置 ===
+    GAS_WARNING_THRESHOLD: float = 0.5
+    GAS_CRITICAL_THRESHOLD: float = 1.0
+    TVOC_WARNING_THRESHOLD: float = 0.5
+    TVOC_CRITICAL_THRESHOLD: float = 1.0
+    ECO2_WARNING_THRESHOLD: int = 1000
+    ECO2_CRITICAL_THRESHOLD: int = 2000
+
+    # === 数据保留策略 ===
+    DATA_RETENTION_DAYS: int = 30
+
+    # === WebSocket 配置 ===
+    WS_PING_INTERVAL: int = 30
+    WS_MAX_CONNECTIONS: int = 100
+
+    # === 外部服务配置（骨架） ===
+    TTS_API_URL: str = ""
+    WEATHER_API_URL: str = ""
+    WEATHER_API_KEY: str = ""
+    WECHAT_WEBHOOK_URL: str = ""
+
     class Config:
         # 从 .env 文件加载配置
         env_file = ".env"

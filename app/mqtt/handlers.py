@@ -15,6 +15,7 @@ from app.models.sensor_data import SensorData
 from app.mqtt.client import mqtt_client
 from app.mqtt.topics import get_status_topic, get_data_topic, get_control_topic
 from app.websocket.manager import ws_manager
+from app.services.alert_service import check_alerts
 
 
 async def handle_mqtt_message(topic: str, payload: bytes) -> None:
@@ -193,6 +194,13 @@ async def _handle_data_report(device_id: str, data: dict) -> None:
 
     # 通过 WebSocket 推送传感器数据给前端
     await ws_manager.broadcast_sensor_data(device_id, sensor_data)
+
+    await check_alerts(device_id, {
+        "gas": sensor_data.get("gas"),
+        "tvoc": sensor_data.get("tvoc"),
+        "eco2": sensor_data.get("eco2"),
+        "mold_risk": sensor_data.get("mold_risk"),
+    })
 
 
 async def _handle_control_ack(device_id: str, data: dict) -> None:

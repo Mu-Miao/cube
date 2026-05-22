@@ -196,3 +196,30 @@ async def unbind_device_endpoint(
     """
     code, message = await unbind_device(db, unbind_data.device_id, current_user.id)
     return ApiResponse(code=code, message=message, data=None)
+
+
+@router.put("/{device_id}/rename", response_model=ApiResponse)
+async def rename_device(
+    device_id: str,
+    rename_data: dict,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """重命名设备 PUT /api/v1/device/{device_id}/rename"""
+    result = await db.execute(
+        select(Device).where(
+            Device.device_id == device_id,
+            Device.bound_user_id == current_user.id,
+        )
+    )
+    device = result.scalar_one_or_none()
+    if not device:
+        return ApiResponse(code=3002, message="设备未绑定", data=None)
+
+    new_name = rename_data.get("device_name", "").strip()
+    if not new_name:
+        return ApiResponse(code=400, message="设备名称不能为空", data=None)
+
+    device.device_name = new_name
+    await db.flush()
+    return ApiResponse(message="设备名称已更新")

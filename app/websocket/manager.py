@@ -136,6 +136,15 @@ class WebSocketManager:
         })
         await self._send_to_subscribers(device_id, message)
 
+    async def broadcast_alert(self, device_id: str, alerts: list[dict]) -> None:
+        """向订阅了某设备的客户端广播告警"""
+        message = json.dumps({
+            "type": "alert",
+            "data": {"device_id": device_id, "alerts": alerts},
+            "timestamp": int(__import__("time").time() * 1000),
+        })
+        await self._send_to_subscribers(device_id, message)
+
     async def _send_to_subscribers(self, device_id: str, message: str) -> None:
         """
         向所有订阅了某设备的客户端发送消息

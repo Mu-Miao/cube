@@ -1,0 +1,14 @@
+version: "3.8"
+
+services:
+  backend:
+    build: .
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./data:/app/data
+    environment:
+      - DEBUG=false
+      - SECRET_KEY=change-me-in-production
+      - MQTT_BROKER_URL=broker.emqx.io
+    restart: unless-stopped

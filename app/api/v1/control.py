@@ -2,16 +2,18 @@
 # 远程控制接口
 # 提供：用户下发控制指令、设备拉取指令、执行结果通知
 
+import json
 import time
 from typing import Any
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, Header, HTTPException, Request
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import get_current_user
 from app.db.session import get_db
 from app.models.device import Device
+from app.models.operation_log import OperationLog
 from app.models.user import User
 from app.schemas.base import ApiResponse
 
@@ -28,6 +30,7 @@ command_queue: dict[str, list[dict[str, Any]]] = {}
 async def send_control_command(
     device_id: str,
     command_data: dict,
+    request: Request,
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
@@ -85,6 +88,15 @@ async def send_control_command(
         "params": params,
     })
 
+    log = OperationLog(
+        user_id=current_user.id,
+        device_id=device_id,
+        action=f"control_{command}",
+        detail=json.dumps({"command": command, "value": value, "params": params}, ensure_ascii=False),
+        ip_address=request.client.host if request.client else None,
+    )
+    db.add(log)
+
     return ApiResponse(message="指令已下发")
 
 
@@ -92,7 +104,7 @@ async def send_control_command(
 async def pull_control_command(
     device_id: str,
     db: AsyncSession = Depends(get_db),
-    authorization: str | None = None,
+    authorization: str | None = Header(default=None),
 ):
     """
     设备拉取控制指令（设备侧，Step 4）

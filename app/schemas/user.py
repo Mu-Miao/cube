@@ -44,6 +44,7 @@ class UserInfo(BaseModel):
     id: int  # 用户 ID
     username: str  # 用户名
     email: Optional[str] = None  # 邮箱
+    role: str = "user"
 
     class Config:
         from_attributes = True  # 支持从 SQLAlchemy 模型转换

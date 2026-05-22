@@ -17,6 +17,7 @@ from app.db.session import init_db
 from app.mqtt.client import mqtt_client
 from app.mqtt.handlers import handle_mqtt_message
 from app.websocket.manager import ws_manager
+from app.websocket.handlers import handle_ws_message
 
 
 @asynccontextmanager
@@ -35,6 +36,17 @@ async def lifespan(app: FastAPI):
 
     # 连接 MQTT Broker（如配置了 MQTT）
     asyncio.create_task(mqtt_client.connect(message_handler=handle_mqtt_message))
+
+    async def periodic_cleanup():
+        while True:
+            await asyncio.sleep(3600)
+            try:
+                from app.services.cleanup_service import cleanup_old_sensor_data
+                await cleanup_old_sensor_data()
+            except Exception as e:
+                logger.error(f"数据清理失败: {e}")
+
+    asyncio.create_task(periodic_cleanup())
 
     logger.info(f"启动完成，监听端口 8000")
 
@@ -89,33 +101,8 @@ async def websocket_endpoint(websocket: WebSocket):
     await ws_manager.connect(websocket)
     try:
         while True:
-            # 接收客户端消息
             raw = await websocket.receive_text()
-            msg = json.loads(raw)
-            msg_type = msg.get("type", "")
-
-            # 兼容两种消息格式：
-            #   扁平格式: { type: "auth", token: "xxx" }
-            #   嵌套格式: { type: "auth", data: { token: "xxx" } }
-            msg_data = msg.get("data", msg)  # 有 data 字段则用嵌套格式，否则整个 msg 即为数据
-
-            if msg_type == "auth":
-                # 认证：客户端发送 JWT Token
-                token = msg_data.get("token", "") or msg.get("token", "")
-                await ws_manager.authenticate(websocket, token)
-
-            elif msg_type == "subscribe":
-                # 订阅设备数据推送
-                device_id = msg_data.get("device_id", "") or msg.get("device_id", "")
-                await ws_manager.subscribe(websocket, device_id)
-
-            elif msg_type == "ping":
-                # 心跳保活
-                await websocket.send_text(json.dumps({"type": "pong"}))
-
-            else:
-                # 未知消息类型，忽略
-                pass
+            await handle_ws_message(websocket, raw)
 
     except WebSocketDisconnect:
         # 客户端主动断开连接

@@ -5,3 +5,5 @@
 from app.models.user import User  # noqa: F401
 from app.models.device import Device  # noqa: F401
 from app.models.sensor_data import SensorData  # noqa: F401
+from app.models.operation_log import OperationLog  # noqa: F401
+from app.models.voice_log import VoiceLog  # noqa: F401
