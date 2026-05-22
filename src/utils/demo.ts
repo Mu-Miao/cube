@@ -106,8 +106,10 @@ export function generateMockSensorData(deviceId?: string): Record<string, unknow
     currentSensorValues[key] = Math.max(range.min, Math.min(range.max, currentSensorValues[key]))
   }
 
+  const defaultDeviceId = mockDevices[0]?.device_id ?? 'DEMO-CUBE-001'
+
   return {
-    device_id: deviceId || mockDevices[0].device_id,
+    device_id: deviceId || defaultDeviceId,
     temperature: Math.round(currentSensorValues.temperature * 10) / 10,
     humidity: Math.round(currentSensorValues.humidity * 10) / 10,
     illuminance: Math.round(currentSensorValues.illuminance),
@@ -170,7 +172,7 @@ export function mockConnect(): MockWebSocket {
 
       // 同时推送设备状态（保持在线）
       dispatchMessage('device_status', {
-        device_id: mockDevices[0].device_id,
+        device_id: mockDevices[0]?.device_id ?? 'DEMO-CUBE-001',
         status: 'online',
         timestamp: new Date().toISOString(),
       })

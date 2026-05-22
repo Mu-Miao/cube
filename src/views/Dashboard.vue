@@ -402,12 +402,7 @@ function getMoldRiskStatus(val: number): 'normal' | 'warning' | 'danger' {
 async function fetchDevices() {
   try {
     const res = await getDeviceList()
-    const list = (res || []) as Array<{
-      device_id: string
-      device_name: string
-      status: string
-      last_seen: string
-    }>
+    const list = res || []
     deviceStore.setDevices(list)
 
     // 默认选中第一个在线设备
@@ -428,15 +423,15 @@ async function fetchLatestData(deviceId: string) {
   try {
     const res = await getLatestData(deviceId)
     if (res) {
-      const data = res as Record<string, unknown>
+      const data = res
       Object.assign(sensorData, data)
 
       // 更新设备数据缓存
       if (!deviceDataCache[deviceId]) {
         deviceDataCache[deviceId] = { temperature: null, humidity: null }
       }
-      deviceDataCache[deviceId].temperature = data.temperature as number
-      deviceDataCache[deviceId].humidity = data.humidity as number
+      deviceDataCache[deviceId].temperature = data.temperature
+      deviceDataCache[deviceId].humidity = data.humidity
 
       // 更新趋势数据
       pushTrendData()

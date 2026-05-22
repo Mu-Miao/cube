@@ -1,17 +1,20 @@
 # Dependencies
 node_modules/
 
-# IDE
-.idea/
-.vscode/
-*.swp
-*.swo
-*~
-
-# Build output
+# Build outputs
 dist/
-dist-ssr/
-*.local
+coverage/
+playwright-report/
+test-results/
+
+# Environment files
+.env
+.env.*
+!.env.example
+
+# Caches
+.eslintcache
+*.tsbuildinfo
 
 # Logs
 logs/
@@ -21,14 +24,8 @@ yarn-debug.log*
 yarn-error.log*
 pnpm-debug.log*
 
-# Cache
-.eslintcache
+# IDE / OS
+.idea/
+.vscode/
 .DS_Store
-
-# Environment
-.env.local
-.env.*.local
-
-# Testing
-coverage/
-.nyc_output/
+Thumbs.db

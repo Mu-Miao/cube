@@ -3,6 +3,15 @@
 // 提供注册、登录、登出接口的类型定义和请求方法
 
 import api from './index'
+import type { ApiResponse } from './device'
+
+function unwrapData<T>(res: unknown): T {
+  const response = res as ApiResponse<T>
+  if (response && typeof response === 'object' && 'data' in response) {
+    return response.data as T
+  }
+  return res as T
+}
 
 /** 登录请求参数 */
 export interface LoginParams {
@@ -29,7 +38,7 @@ export interface LoginResult {
  * 返回 JWT Token，前端存储到 localStorage
  */
 export const login = (data: LoginParams) => {
-  return api.post<LoginResult>('/auth/login', data)
+  return api.post('/auth/login', data).then((res) => unwrapData<LoginResult>(res))
 }
 
 /**
@@ -38,7 +47,7 @@ export const login = (data: LoginParams) => {
  * 创建新用户账号，注册成功后跳转到登录页
  */
 export const register = (data: RegisterParams) => {
-  return api.post<{ id: number }>('/auth/register', data)
+  return api.post('/auth/register', data).then((res) => unwrapData<{ id: number }>(res))
 }
 
 /**

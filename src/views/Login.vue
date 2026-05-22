@@ -120,9 +120,8 @@ async function handleLogin() {
   loading.value = true
   try {
     const res = await login({ username: form.username, password: form.password })
-    // 响应拦截器已返回 response.data，所以 res 就是 LoginResult
     authStore.setAuth({
-      token: res.data.access_token,
+      token: res.access_token,
       username: form.username,
       role: 'user',
     })

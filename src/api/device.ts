@@ -4,6 +4,24 @@
 
 import api from './index'
 
+export interface ApiResponse<T = unknown> {
+  code?: number
+  message?: string
+  data?: T | null
+}
+
+function asApiResponse<T>(res: unknown): ApiResponse<T> {
+  return res as ApiResponse<T>
+}
+
+function unwrapData<T>(res: unknown, fallback: T): T {
+  const response = asApiResponse<T>(res)
+  if (response && typeof response === 'object' && 'data' in response) {
+    return response.data ?? fallback
+  }
+  return (res as T) ?? fallback
+}
+
 /** 绑定设备请求参数 */
 export interface BindDeviceParams {
   device_id: string    // 设备唯一标识（MAC 地址）
@@ -46,7 +64,7 @@ export interface ControlCommand {
  * 需要 JWT 认证
  */
 export const getDeviceList = () => {
-  return api.get<DeviceInfo[]>('/device/list')
+  return api.get('/device/list').then((res) => unwrapData<DeviceInfo[]>(res, []))
 }
 
 /**
@@ -55,7 +73,7 @@ export const getDeviceList = () => {
  * 需要 JWT 认证
  */
 export const bindDevice = (data: BindDeviceParams) => {
-  return api.post('/device/bind', data)
+  return api.post('/device/bind', data).then((res) => asApiResponse(res))
 }
 
 /**
@@ -64,7 +82,7 @@ export const bindDevice = (data: BindDeviceParams) => {
  * 需要 JWT 认证
  */
 export const getLatestData = (deviceId: string) => {
-  return api.get<SensorData>(`/data/${deviceId}/latest`)
+  return api.get(`/data/${deviceId}/latest`).then((res) => unwrapData<SensorData | null>(res, null))
 }
 
 /**
@@ -74,7 +92,7 @@ export const getLatestData = (deviceId: string) => {
  * 指令会加入设备队列，设备通过控制拉取接口获取并执行
  */
 export const sendControlCommand = (deviceId: string, data: ControlCommand) => {
-  return api.post(`/control/${deviceId}`, data)
+  return api.post(`/control/${deviceId}`, data).then((res) => asApiResponse(res))
 }
 
 /**
@@ -83,5 +101,5 @@ export const sendControlCommand = (deviceId: string, data: ControlCommand) => {
  * 需要 JWT 认证
  */
 export const unbindDevice = (data: { device_id: string }) => {
-  return api.post('/device/unbind', data)
+  return api.post('/device/unbind', data).then((res) => asApiResponse(res))
 }

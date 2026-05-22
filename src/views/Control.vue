@@ -396,7 +396,7 @@ onMounted(async () => {
     selectedDeviceId.value = queryDeviceId
   } else if (deviceStore.devices.length > 0) {
     // 默认选中第一个设备
-    selectedDeviceId.value = deviceStore.devices[0].device_id
+    selectedDeviceId.value = deviceStore.devices[0]?.device_id ?? ''
   }
 })
 </script>

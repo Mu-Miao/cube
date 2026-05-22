@@ -134,7 +134,7 @@ async function fetchSensorData() {
   if (!deviceId) return
   try {
     const res = await getLatestData(deviceId)
-    const data = res.data
+    const data = res
     if (data) {
       moldRisk.value = data.mold_risk ?? 0
       gasValue.value = data.gas ?? 0
