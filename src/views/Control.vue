@@ -179,13 +179,10 @@ import ControlToggle from '@/components/ControlToggle.vue'
 import { useDeviceStore } from '@/store/device'
 import { sendControlCommand } from '@/api/device'
 import { getDeviceList } from '@/api/device'
-import { isDemoMode } from '@/utils/demo'
-
 defineOptions({ name: 'ControlPage' })
 
 const route = useRoute()
 const deviceStore = useDeviceStore()
-const demoMode = isDemoMode()
 
 // 当前选中的设备 ID
 const selectedDeviceId = ref('')
@@ -269,12 +266,7 @@ function addLog(description: string, status: 'success' | 'error') {
 async function sendCommand(command: string, value: string): Promise<boolean> {
   if (!selectedDeviceId.value) return false
   try {
-    const res = await sendControlCommand(selectedDeviceId.value, { command, value })
-    const responseData = res as { code?: number; message?: string }
-    if (responseData.code !== undefined && responseData.code !== 0) {
-      ElMessage.error(responseData.message || '指令发送失败')
-      return false
-    }
+    await sendControlCommand(selectedDeviceId.value, { command, value })
     return true
   } catch (err: unknown) {
     const error = err as { response?: { data?: { detail?: string; message?: string } } }

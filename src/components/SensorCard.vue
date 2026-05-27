@@ -106,7 +106,6 @@ const linePoints = computed(() => {
   const min = Math.min(...data)
   const max = Math.max(...data)
   const range = max - min || 1
-  const width = data.length - 1
   const height = 32
   const padding = 2
 

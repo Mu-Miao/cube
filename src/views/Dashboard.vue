@@ -209,14 +209,12 @@ import ControlToggle from '@/components/ControlToggle.vue'
 import GasAlertBanner from '@/components/GasAlertBanner.vue'
 import { getDeviceList, bindDevice, getLatestData, sendControlCommand } from '@/api/device'
 import { useWebSocket } from '@/composables/useWebSocket'
-import { useAuthStore } from '@/store/auth'
 import { useDeviceStore } from '@/store/device'
 import { isDemoMode } from '@/utils/demo'
 
 defineOptions({ name: 'DashboardPage' })
 
 const router = useRouter()
-const authStore = useAuthStore()
 const deviceStore = useDeviceStore()
 
 // ============================================================
@@ -401,8 +399,7 @@ function getMoldRiskStatus(val: number): 'normal' | 'warning' | 'danger' {
 
 async function fetchDevices() {
   try {
-    const res = await getDeviceList()
-    const list = res || []
+    const list = await getDeviceList()
     deviceStore.setDevices(list)
 
     // 默认选中第一个在线设备
@@ -421,9 +418,8 @@ async function fetchDevices() {
 
 async function fetchLatestData(deviceId: string) {
   try {
-    const res = await getLatestData(deviceId)
-    if (res) {
-      const data = res
+    const data = await getLatestData(deviceId)
+    if (data) {
       Object.assign(sensorData, data)
 
       // 更新设备数据缓存

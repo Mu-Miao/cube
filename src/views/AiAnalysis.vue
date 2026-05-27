@@ -80,6 +80,7 @@ import { ref, computed, onMounted, onBeforeUnmount, watch } from 'vue'
 import * as echarts from 'echarts'
 import { useDeviceStore } from '@/store/device'
 import { getLatestData } from '@/api/device'
+import { getAiSuggestions, getEnvironmentScore } from '@/api/ai'
 import { showInfoToast } from '@/utils/alert'
 
 defineOptions({ name: 'AiAnalysisPage' })
@@ -87,20 +88,22 @@ defineOptions({ name: 'AiAnalysisPage' })
 // ---------- Store ----------
 const deviceStore = useDeviceStore()
 
-// ---------- 模拟评分数据 ----------
-const mockScore = 85
+// ---------- 评分数据 ----------
+const environmentScore = ref(85)
+const scoreSummary = ref('')
 
 const scoreComment = computed(() => {
-  if (mockScore >= 90) return '当前室内环境整体优秀，各项指标均处于最佳范围，非常适合工作与休息。'
-  if (mockScore >= 70) return '当前室内环境整体舒适，空气质量极佳。'
-  if (mockScore >= 40) return '当前室内环境一般，部分指标需要关注，建议适当调整。'
+  if (scoreSummary.value) return scoreSummary.value
+  if (environmentScore.value >= 90) return '当前室内环境整体优秀，各项指标均处于最佳范围，非常适合工作与休息。'
+  if (environmentScore.value >= 70) return '当前室内环境整体舒适，空气质量极佳。'
+  if (environmentScore.value >= 40) return '当前室内环境一般，部分指标需要关注，建议适当调整。'
   return '当前室内环境较差，多项指标超标，请尽快改善通风和温控。'
 })
 
 const scoreRating = computed(() => {
-  if (mockScore >= 90) return '优秀'
-  if (mockScore >= 70) return '良好'
-  if (mockScore >= 40) return '一般'
+  if (environmentScore.value >= 90) return '优秀'
+  if (environmentScore.value >= 70) return '良好'
+  if (environmentScore.value >= 40) return '一般'
   return '差'
 })
 
@@ -128,19 +131,52 @@ const suggestions = ref([
   { icon: '\uD83D\uDCA7', title: '湿度偏高 (68%)', desc: '建议开启除湿功能' },
 ])
 
+const aiIconMap: Record<string, string> = {
+  i: '\u2139',
+  light: '\uD83D\uDCA1',
+  wind: '\uD83C\uDF2C\uFE0F',
+  water: '\uD83D\uDCA7',
+  temp: '\uD83C\uDF21',
+  ok: '\u2713',
+}
+
 // ---------- 尝试从 store 获取传感器数据 ----------
 async function fetchSensorData() {
   const deviceId = deviceStore.selectedDeviceId
   if (!deviceId) return
   try {
-    const res = await getLatestData(deviceId)
-    const data = res
+    const data = await getLatestData(deviceId)
     if (data) {
       moldRisk.value = data.mold_risk ?? 0
       gasValue.value = data.gas ?? 0
     }
   } catch {
     // 使用模拟数据兜底
+  }
+}
+
+async function fetchAiAnalysis() {
+  const deviceId = deviceStore.selectedDeviceId
+  if (!deviceId) return
+  try {
+    const [scoreData, suggestionData] = await Promise.all([
+      getEnvironmentScore(deviceId),
+      getAiSuggestions(deviceId),
+    ])
+    if (typeof scoreData.score === 'number') {
+      environmentScore.value = scoreData.score
+      scoreSummary.value = scoreData.summary || ''
+      renderGaugeChart()
+    }
+    if (suggestionData.suggestions?.length) {
+      suggestions.value = suggestionData.suggestions.map((item) => ({
+        icon: aiIconMap[item.icon] || item.icon,
+        title: item.title,
+        desc: item.desc,
+      }))
+    }
+  } catch {
+    // 保留本地模拟建议作为兜底
   }
 }
 
@@ -157,7 +193,12 @@ function getScoreColor(score: number): string {
 function initGaugeChart() {
   if (!gaugeChartRef.value) return
   gaugeChart = echarts.init(gaugeChartRef.value)
-  const color = getScoreColor(mockScore)
+  renderGaugeChart()
+}
+
+function renderGaugeChart() {
+  if (!gaugeChart) return
+  const color = getScoreColor(environmentScore.value)
   gaugeChart.setOption({
     series: [
       {
@@ -219,7 +260,7 @@ function initGaugeChart() {
         },
         data: [
           {
-            value: mockScore,
+            value: environmentScore.value,
             name: scoreRating.value,
           },
         ],
@@ -348,6 +389,7 @@ onMounted(() => {
   initGaugeChart()
   initWeeklyChart()
   fetchSensorData()
+  fetchAiAnalysis()
   window.addEventListener('resize', handleResize)
 })
 
@@ -360,6 +402,7 @@ onBeforeUnmount(() => {
 // 监听选中设备变化，重新获取数据
 watch(() => deviceStore.selectedDeviceId, () => {
   fetchSensorData()
+  fetchAiAnalysis()
 })
 </script>
 

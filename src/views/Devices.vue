@@ -295,15 +295,10 @@ async function handleBind() {
 
   bindLoading.value = true
   try {
-    const res = await bindDevice({
+    await bindDevice({
       device_id: bindForm.device_id.trim(),
       device_name: bindForm.device_name.trim(),
     })
-    const responseData = res as { code?: number; message?: string }
-    if (responseData.code !== undefined && responseData.code !== 0) {
-      ElMessage.error(responseData.message || '绑定失败')
-      return
-    }
     ElMessage.success('绑定成功')
     showBindDialog.value = false
     bindForm.device_id = ''
@@ -326,12 +321,7 @@ async function handleUnbind() {
 
   unbindLoading.value = true
   try {
-    const res = await unbindDevice({ device_id: unbindTarget.value.device_id })
-    const responseData = res as { code?: number; message?: string }
-    if (responseData.code !== undefined && responseData.code !== 0) {
-      ElMessage.error(responseData.message || '解绑失败')
-      return
-    }
+    await unbindDevice({ device_id: unbindTarget.value.device_id })
     ElMessage.success('解绑成功')
     showUnbindDialog.value = false
     unbindTarget.value = null

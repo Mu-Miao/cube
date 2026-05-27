@@ -69,10 +69,19 @@ service.interceptors.request.use(
   }
 )
 
-// 响应拦截器：演示模式模拟响应直接返回，正常模式处理 401 错误
+// 响应拦截器：演示模式模拟响应直接返回，正常模式处理 401 错误、统一解包 { code, message, data }
 service.interceptors.response.use(
   (response: AxiosResponse) => {
-    // 正常模式：直接返回响应体中的 data 字段
+    const body = response.data as { code?: number; message?: string; data?: unknown }
+
+    // 后端统一使用 { code, message, data } 包装格式
+    if (body && typeof body === 'object' && 'code' in body) {
+      if (body.code !== undefined && body.code !== 0) {
+        return Promise.reject({ response: { data: { detail: body.message } } })
+      }
+      return body.data
+    }
+
     return response.data
   },
   (error) => {
