@@ -1,6 +1,30 @@
-# 智能桌面魔方 — 后端服务
+# 智能桌面魔方 - 后端服务
+
+更新时间：2026-05-28
 
 基于 FastAPI + SQLAlchemy + MQTT + WebSocket 的 IoT 后端，为智能桌面魔方硬件设备提供设备管理、传感器数据采集、远程控制、告警检测等服务。
+
+## 当前状态
+
+后端已经完成 MVP 演示所需的主要服务能力：
+
+- 用户注册、登录、JWT 鉴权、管理员权限校验。
+- 设备握手、心跳、绑定、解绑、列表、重命名。
+- 传感器数据上报、最新数据查询、历史数据查询。
+- 远程控制指令下发、设备拉取指令、执行结果 ACK。
+- 操作日志和语音日志查询/记录。
+- 管理员用户管理、设备管理、系统统计。
+- AI 分析接口：环境综合评分、风险预警、智能建议、周报数据。
+- MQTT 设备消息处理。
+- WebSocket 实时推送传感器数据、设备状态、控制结果和告警。
+
+最近验证结果：
+
+```bash
+python -m pytest tests/
+```
+
+测试通过，当前测试覆盖认证、设备、数据、控制、AI 分析等核心流程。
 
 ## 技术栈
 
@@ -71,12 +95,16 @@ backend/
 
 - Python 3.13+
 - MQTT Broker（默认使用公共 broker.emqx.io）
+- 推荐使用虚拟环境或 Conda 环境隔离依赖
 
 ### 本地开发
 
 ```bash
 # 安装依赖
 pip install -r requirements.txt
+
+# 初始化数据库
+python scripts/init_db.py
 
 # 启动服务
 uvicorn app.main:app --reload --port 8000
@@ -94,6 +122,18 @@ docker-compose up -d
 
 ```bash
 python scripts/create_admin.py <username> <password> [email]
+```
+
+### 运行测试
+
+```bash
+python -m pytest tests/
+```
+
+如果使用 Conda 环境，可按实际环境路径执行：
+
+```bash
+/opt/miniconda3/envs/backend/bin/python -m pytest tests/
 ```
 
 ## API 概览
@@ -167,6 +207,24 @@ python scripts/create_admin.py <username> <password> [email]
 
 推送类型: `sensor_data`、`device_status`、`device_heartbeat`、`control_result`、`alert`
 
+## 前端联调
+
+前端仓库位于同级目录 `../tianmu`，默认通过以下地址连接后端：
+
+| 项目 | 默认值 |
+|------|--------|
+| REST API | `http://localhost:8000/api/v1` |
+| WebSocket | `ws://localhost:8000/ws` |
+
+前端 `.env` 示例：
+
+```text
+VITE_API_BASE_URL=/api/v1
+VITE_WS_BASE_URL=ws://localhost:8000
+```
+
+开发时可以使用 Vite 代理，也可以把 `VITE_API_BASE_URL` 改成完整后端地址。
+
 ## 告警阈值
 
 | 指标 | 警告阈值 | 严重阈值 |
@@ -189,3 +247,19 @@ python scripts/create_admin.py <username> <password> [email]
 | `TTS_API_URL` | 空 | 语音合成 API |
 | `WEATHER_API_URL` | 空 | 天气 API |
 | `WECHAT_WEBHOOK_URL` | 空 | 企业微信 Webhook |
+
+## 后续待办
+
+| 优先级 | 事项 | 说明 |
+|--------|------|------|
+| 高 | 硬件实机联调 | ESP32-S3 完成握手、心跳、数据上报、控制轮询、ACK 回传 |
+| 高 | MQTT 链路实测 | 用真实 Broker 和硬件消息验证 topic、payload、异常处理 |
+| 高 | 演示数据脚本 | 一键生成测试用户、测试设备、历史数据和风险场景 |
+| 中 | 告警持久化 | 将告警事件保存为独立记录或日志，支持前端告警中心 |
+| 中 | 第三方服务联调 | TTS、天气、企业微信推送目前有服务结构，还需要接真实服务 |
+| 中 | Alembic 迁移 | 表结构稳定后补充正式数据库迁移脚本 |
+| 中 | Docker 部署验证 | 确认本地、服务器、竞赛现场环境均可稳定启动 |
+
+## 仓库说明
+
+当前后端仓库分支为 `backend`。前端在同一 GitHub 仓库的 `tianmu` 分支中维护，两个目录是独立工作区，提交和推送需要分别执行。
