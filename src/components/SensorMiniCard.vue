@@ -23,15 +23,34 @@ withDefaults(defineProps<{
 
 <style scoped>
 .sensor-mini-card {
-  background: var(--bg-surface, var(--bg-card, rgba(15, 23, 42, 0.65)));
-  border: 1px solid var(--border-default, var(--border-subtle, rgba(51, 65, 102, 0.45)));
+  position: relative;
+  overflow: hidden;
+  background:
+    linear-gradient(145deg, rgba(255, 255, 255, 0.05), rgba(255, 255, 255, 0.012)),
+    var(--bg-card, rgba(15, 23, 42, 0.65));
+  border: var(--border-glass, 1px solid rgba(255, 255, 255, 0.1));
   border-radius: var(--radius-card, var(--radius-md, 12px));
   padding: 12px 14px;
-  transition: all var(--transition-base, 250ms cubic-bezier(0.4, 0, 0.2, 1));
+  box-shadow: var(--shadow-card, 0 4px 12px rgba(0, 0, 0, 0.35));
+  transition:
+    transform var(--transition-spring, 420ms cubic-bezier(0.2, 0.9, 0.2, 1)),
+    border-color var(--transition-base, 250ms cubic-bezier(0.4, 0, 0.2, 1)),
+    box-shadow var(--transition-base, 250ms cubic-bezier(0.4, 0, 0.2, 1));
+}
+
+.sensor-mini-card::before {
+  content: '';
+  position: absolute;
+  inset: 0 0 auto;
+  height: 1px;
+  background: linear-gradient(90deg, rgba(6, 182, 212, 0.85), rgba(163, 230, 53, 0.5), transparent);
+  opacity: 0.42;
 }
 
 .sensor-mini-card:hover {
-  border-color: var(--border-accent, rgba(245, 158, 11, 0.3));
+  transform: translateY(-3px);
+  border-color: rgba(6, 182, 212, 0.32);
+  box-shadow: var(--shadow-holo, 0 0 28px rgba(6, 182, 212, 0.12));
 }
 
 .sensor-mini-card__label {
@@ -39,12 +58,16 @@ withDefaults(defineProps<{
   font-size: 12px;
   color: var(--text-secondary, var(--text-secondary, #8b95b0));
   margin-bottom: 4px;
+  position: relative;
+  z-index: 1;
 }
 
 .sensor-mini-card__value-row {
   display: flex;
   align-items: baseline;
   gap: 4px;
+  position: relative;
+  z-index: 1;
 }
 
 .sensor-mini-card__value {

@@ -397,7 +397,7 @@ onMounted(async () => {
 .control-page {
   display: flex;
   gap: 0;
-  height: calc(100vh - 56px - 48px); /* 减去顶栏和 padding */
+  height: calc(100vh - 60px - 48px); /* 减去顶栏和 padding */
   margin: calc(-1 * var(--spacing-page));
   margin-top: calc(-1 * var(--spacing-page) + 0px);
 }
@@ -406,14 +406,18 @@ onMounted(async () => {
 .control-sidebar {
   width: 240px;
   flex-shrink: 0;
-  background: var(--bg-surface);
-  border-right: var(--border-default);
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.046), rgba(255, 255, 255, 0.01)),
+    rgba(10, 15, 22, 0.62);
+  border-right: var(--border-glass);
   display: flex;
   flex-direction: column;
   overflow: hidden;
+  backdrop-filter: blur(14px) saturate(1.16);
+  -webkit-backdrop-filter: blur(14px) saturate(1.16);
 }
 .control-sidebar__title {
-  padding: 16px 16px 12px;
+  padding: 18px 16px 12px;
   font-family: var(--font-display);
   font-size: 14px;
   font-weight: 600;
@@ -432,19 +436,38 @@ onMounted(async () => {
   display: flex;
   align-items: center;
   gap: 10px;
-  padding: 10px 12px;
-  border-radius: var(--radius-button);
+  padding: 11px 12px;
+  border-radius: 10px;
   cursor: pointer;
-  transition: all var(--transition-fast);
-  margin-bottom: 2px;
-  border-left: 3px solid transparent;
+  transition:
+    transform var(--transition-spring),
+    background var(--transition-base),
+    border-color var(--transition-base),
+    color var(--transition-fast);
+  margin-bottom: 6px;
+  border: 1px solid transparent;
+  position: relative;
+  overflow: hidden;
 }
 .device-list-item:hover {
-  background: var(--bg-hover);
+  background: rgba(255, 255, 255, 0.045);
+  border-color: rgba(255, 255, 255, 0.08);
+  transform: translateX(3px);
 }
 .device-list-item--active {
-  background: rgba(6, 182, 212, 0.08);
-  border-left-color: var(--color-cube-primary);
+  background: linear-gradient(90deg, rgba(6, 182, 212, 0.16), rgba(163, 230, 53, 0.055));
+  border-color: rgba(6, 182, 212, 0.28);
+  box-shadow: inset 0 0 20px rgba(6, 182, 212, 0.08);
+}
+.device-list-item--active::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 9px;
+  bottom: 9px;
+  width: 3px;
+  border-radius: 0 2px 2px 0;
+  background: linear-gradient(180deg, var(--color-cube-primary), var(--color-cube-accent));
 }
 .device-list-item--active .device-list-item__name {
   color: var(--color-cube-primary);
@@ -475,6 +498,7 @@ onMounted(async () => {
   display: flex;
   flex-direction: column;
   gap: 20px;
+  background: transparent;
 }
 
 /* 未选中设备 */
@@ -496,6 +520,13 @@ onMounted(async () => {
   display: flex;
   align-items: center;
   justify-content: space-between;
+  padding: 18px 20px;
+  border: var(--border-glass);
+  border-radius: var(--radius-card);
+  background:
+    linear-gradient(145deg, rgba(255, 255, 255, 0.052), rgba(255, 255, 255, 0.012)),
+    var(--bg-card);
+  box-shadow: var(--shadow-card);
 }
 .control-header__info {
   display: flex;
@@ -508,6 +539,17 @@ onMounted(async () => {
   font-weight: 700;
   color: var(--text-primary);
   margin: 0;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.control-header__name::before {
+  content: '';
+  width: 4px;
+  height: 22px;
+  border-radius: var(--radius-full);
+  background: linear-gradient(180deg, var(--color-cube-primary), var(--color-cube-accent));
+  box-shadow: 0 0 14px rgba(6, 182, 212, 0.45);
 }
 .control-header__id {
   font-family: var(--font-mono);
@@ -521,7 +563,7 @@ onMounted(async () => {
   align-items: center;
   gap: 8px;
   padding: 10px 16px;
-  background: var(--color-danger-dim);
+  background: linear-gradient(90deg, rgba(239, 68, 68, 0.16), rgba(245, 158, 11, 0.06));
   border: 1px solid rgba(239, 68, 68, 0.2);
   border-radius: var(--radius-button);
   color: var(--color-danger);
@@ -542,13 +584,34 @@ onMounted(async () => {
 
 /* 单个控制面板 */
 .control-panel {
-  background: var(--bg-card);
+  position: relative;
+  background:
+    linear-gradient(145deg, rgba(255, 255, 255, 0.058), rgba(255, 255, 255, 0.012)),
+    var(--bg-card);
   backdrop-filter: blur(12px);
   -webkit-backdrop-filter: blur(12px);
-  border: var(--border-default);
+  border: var(--border-glass);
   border-radius: var(--radius-card);
   overflow: hidden;
+  box-shadow: var(--shadow-card);
+  transition:
+    transform var(--transition-spring),
+    border-color var(--transition-base),
+    box-shadow var(--transition-base);
   animation: fade-up-blur 0.5s cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+.control-panel::before {
+  content: '';
+  position: absolute;
+  inset: 0 0 auto;
+  height: 2px;
+  background: linear-gradient(90deg, var(--color-cube-primary), var(--color-cube-accent), transparent);
+  opacity: 0.68;
+}
+.control-panel:hover {
+  transform: translateY(-4px);
+  border-color: rgba(6, 182, 212, 0.34);
+  box-shadow: var(--shadow-holo);
 }
 .control-panel:nth-child(2) { animation-delay: 60ms; }
 .control-panel:nth-child(3) { animation-delay: 120ms; }
@@ -558,8 +621,9 @@ onMounted(async () => {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 14px 20px;
+  padding: 16px 20px 14px;
   border-bottom: var(--border-default);
+  background: rgba(255, 255, 255, 0.018);
 }
 .control-panel__title {
   font-family: var(--font-display);
@@ -594,6 +658,10 @@ onMounted(async () => {
   display: flex;
   align-items: center;
   gap: 12px;
+  padding: 12px;
+  border: 1px solid rgba(255, 255, 255, 0.055);
+  border-radius: var(--radius-button);
+  background: rgba(255, 255, 255, 0.03);
 }
 .slider-control__label {
   font-family: var(--font-body);
@@ -639,9 +707,19 @@ onMounted(async () => {
   align-items: center;
   gap: 10px;
   padding: 8px 10px;
-  background: var(--bg-elevated);
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.05);
   border-radius: var(--radius-button);
   font-size: 13px;
+  transition:
+    transform var(--transition-base),
+    border-color var(--transition-base),
+    background var(--transition-base);
+}
+.log-item:hover {
+  transform: translateX(3px);
+  border-color: rgba(6, 182, 212, 0.24);
+  background: rgba(6, 182, 212, 0.055);
 }
 .log-item__time {
   font-family: var(--font-mono);
@@ -662,10 +740,10 @@ onMounted(async () => {
 
 /* ========== Element Plus 覆盖 ========== */
 .control-panel :deep(.el-slider__runway) {
-  background-color: var(--bg-elevated);
+  background-color: rgba(255, 255, 255, 0.08);
 }
 .control-panel :deep(.el-slider__bar) {
-  background-color: var(--color-cube-primary);
+  background: linear-gradient(90deg, var(--color-cube-primary), var(--color-cube-accent));
 }
 .control-panel :deep(.el-slider__button) {
   border-color: var(--color-cube-primary);

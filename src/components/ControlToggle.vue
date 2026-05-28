@@ -32,6 +32,19 @@ const emit = defineEmits<{
   align-items: center;
   justify-content: space-between;
   gap: 12px;
+  min-height: 40px;
+  padding: 8px 10px;
+  border: 1px solid rgba(255, 255, 255, 0.045);
+  border-radius: var(--radius-button, 6px);
+  background: rgba(255, 255, 255, 0.026);
+  transition:
+    background var(--transition-base, 250ms cubic-bezier(0.4, 0, 0.2, 1)),
+    border-color var(--transition-base, 250ms cubic-bezier(0.4, 0, 0.2, 1));
+}
+
+.control-toggle:hover {
+  background: rgba(6, 182, 212, 0.045);
+  border-color: rgba(6, 182, 212, 0.18);
 }
 
 .control-toggle__label {
@@ -65,8 +78,9 @@ const emit = defineEmits<{
 }
 
 .control-toggle :deep(.el-switch.is-checked .el-switch__core) {
-  background-color: var(--color-cube-primary, var(--primary, #f59e0b)) !important;
+  background: linear-gradient(90deg, var(--color-cube-primary, var(--primary, #06b6d4)), var(--color-cube-accent, #a3e635)) !important;
   border-color: var(--color-cube-primary, var(--primary, #f59e0b)) !important;
+  box-shadow: 0 0 16px rgba(6, 182, 212, 0.25) !important;
 }
 
 .control-toggle :deep(.el-switch__core) {

@@ -86,29 +86,38 @@ function updateBrightness(brightness: number) {
   display: flex;
   align-items: center;
   gap: 10px;
+  padding: 10px;
+  border: 1px solid rgba(255, 255, 255, 0.055);
+  border-radius: var(--radius-button, 6px);
+  background: rgba(255, 255, 255, 0.028);
 }
 
 .light-color-picker__swatch {
-  width: 32px;
-  height: 32px;
-  border-radius: 6px;
+  width: 34px;
+  height: 34px;
+  border-radius: 8px;
   cursor: pointer;
   display: flex;
   align-items: center;
   justify-content: center;
-  transition: all var(--transition-fast, 150ms cubic-bezier(0.4, 0, 0.2, 1));
-  border: 2px solid transparent;
+  transition:
+    transform var(--transition-spring, 420ms cubic-bezier(0.2, 0.9, 0.2, 1)),
+    box-shadow var(--transition-base, 250ms cubic-bezier(0.4, 0, 0.2, 1)),
+    border-color var(--transition-base, 250ms cubic-bezier(0.4, 0, 0.2, 1));
+  border: 2px solid rgba(255, 255, 255, 0.12);
   position: relative;
+  box-shadow: inset 0 0 12px rgba(255, 255, 255, 0.14);
 }
 
 .light-color-picker__swatch:hover:not(.light-color-picker__swatch--disabled) {
-  transform: scale(1.1);
+  transform: translateY(-2px) scale(1.08);
+  box-shadow: 0 0 18px currentColor, inset 0 0 12px rgba(255, 255, 255, 0.18);
 }
 
 .light-color-picker__swatch--active {
   border-color: #ffffff;
-  transform: scale(1.08);
-  box-shadow: 0 0 8px rgba(255, 255, 255, 0.3);
+  transform: translateY(-2px) scale(1.08);
+  box-shadow: 0 0 18px rgba(255, 255, 255, 0.32), inset 0 0 14px rgba(255, 255, 255, 0.2);
 }
 
 .light-color-picker__swatch--disabled {
@@ -128,6 +137,10 @@ function updateBrightness(brightness: number) {
   display: flex;
   align-items: center;
   gap: 10px;
+  padding: 10px;
+  border: 1px solid rgba(255, 255, 255, 0.055);
+  border-radius: var(--radius-button, 6px);
+  background: rgba(255, 255, 255, 0.028);
 }
 
 .light-color-picker__brightness-label {

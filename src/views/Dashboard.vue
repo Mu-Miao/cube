@@ -699,16 +699,16 @@ onUnmounted(() => {
    页面容器
    ============================================================ */
 .dashboard-page {
-  padding: 24px;
+  padding: 4px;
   min-height: 100vh;
-  background: var(--bg-deepest, #060a18);
+  background: transparent;
 }
 
 /* ============================================================
    通用区块
    ============================================================ */
 .dashboard-section {
-  margin-bottom: 24px;
+  margin-bottom: 26px;
 }
 
 .section-header {
@@ -721,9 +721,21 @@ onUnmounted(() => {
 .section-title {
   font-family: var(--font-display, 'Plus Jakarta Sans', sans-serif);
   font-size: 18px;
-  font-weight: 600;
+  font-weight: 700;
   color: var(--text-primary, var(--text-main, #e8ecf4));
   margin: 0;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.section-title::before {
+  content: '';
+  width: 4px;
+  height: 18px;
+  border-radius: var(--radius-full, 9999px);
+  background: linear-gradient(180deg, var(--color-cube-primary, #06b6d4), var(--color-cube-accent, #a3e635));
+  box-shadow: 0 0 14px rgba(6, 182, 212, 0.45);
 }
 
 .section-subtitle {
@@ -740,9 +752,9 @@ onUnmounted(() => {
   display: flex;
   gap: 16px;
   overflow-x: auto;
-  padding-bottom: 8px;
+  padding: 2px 2px 12px;
   scrollbar-width: thin;
-  scrollbar-color: rgba(51, 65, 102, 0.45) transparent;
+  scrollbar-color: rgba(6, 182, 212, 0.32) transparent;
 }
 
 .device-cards-scroll::-webkit-scrollbar {
@@ -754,7 +766,7 @@ onUnmounted(() => {
 }
 
 .device-cards-scroll::-webkit-scrollbar-thumb {
-  background: rgba(51, 65, 102, 0.45);
+  background: linear-gradient(90deg, rgba(6, 182, 212, 0.42), rgba(163, 230, 53, 0.28));
   border-radius: 3px;
 }
 
@@ -770,8 +782,12 @@ onUnmounted(() => {
   min-width: 180px;
   max-width: 220px;
   flex-shrink: 0;
-  background: var(--bg-surface, var(--bg-card, rgba(15, 23, 42, 0.65)));
-  border: 2px dashed var(--border-default, var(--border-subtle, rgba(51, 65, 102, 0.45)));
+  position: relative;
+  overflow: hidden;
+  background:
+    linear-gradient(145deg, rgba(255, 255, 255, 0.048), rgba(255, 255, 255, 0.01)),
+    rgba(12, 18, 25, 0.58);
+  border: 1px dashed rgba(163, 230, 53, 0.34);
   border-radius: var(--radius-card, var(--radius-md, 12px));
   display: flex;
   flex-direction: column;
@@ -780,26 +796,51 @@ onUnmounted(() => {
   gap: 8px;
   padding: 20px 14px;
   cursor: pointer;
-  transition: all var(--transition-base, 250ms cubic-bezier(0.4, 0, 0.2, 1));
+  transition:
+    transform var(--transition-spring, 420ms cubic-bezier(0.2, 0.9, 0.2, 1)),
+    border-color var(--transition-base, 250ms cubic-bezier(0.4, 0, 0.2, 1)),
+    box-shadow var(--transition-base, 250ms cubic-bezier(0.4, 0, 0.2, 1)),
+    background var(--transition-base, 250ms cubic-bezier(0.4, 0, 0.2, 1));
+}
+
+.add-device-card::before {
+  content: '';
+  position: absolute;
+  inset: 10px;
+  border: 1px solid rgba(255, 255, 255, 0.055);
+  border-radius: calc(var(--radius-card, 12px) - 4px);
+  pointer-events: none;
 }
 
 .add-device-card:hover {
-  border-color: var(--border-accent, rgba(245, 158, 11, 0.5));
-  background: rgba(245, 158, 11, 0.06);
-  transform: translateY(-2px);
+  border-color: rgba(163, 230, 53, 0.62);
+  background: rgba(163, 230, 53, 0.055);
+  transform: translateY(-5px);
+  box-shadow: 0 0 24px rgba(163, 230, 53, 0.12), var(--shadow-card, 0 4px 12px rgba(0, 0, 0, 0.35));
 }
 
 .add-device-card__icon {
+  width: 38px;
+  height: 38px;
+  display: grid;
+  place-items: center;
+  border-radius: 10px;
+  background: rgba(163, 230, 53, 0.08);
+  border: 1px solid rgba(163, 230, 53, 0.22);
   font-size: 28px;
   font-weight: 300;
-  color: var(--text-secondary, #8b95b0);
+  color: var(--color-cube-accent, #a3e635);
   line-height: 1;
+  position: relative;
+  z-index: 1;
 }
 
 .add-device-card__text {
   font-family: var(--font-body, 'Inter', 'Plus Jakarta Sans', sans-serif);
   font-size: 13px;
   color: var(--text-secondary, #8b95b0);
+  position: relative;
+  z-index: 1;
 }
 
 /* ============================================================
@@ -846,10 +887,24 @@ onUnmounted(() => {
    右栏面板
    ============================================================ */
 .panel {
-  background: var(--bg-surface, var(--bg-card, rgba(15, 23, 42, 0.65)));
-  border: 1px solid var(--border-default, var(--border-subtle, rgba(51, 65, 102, 0.45)));
+  position: relative;
+  overflow: hidden;
+  background:
+    linear-gradient(145deg, rgba(255, 255, 255, 0.055), rgba(255, 255, 255, 0.012)),
+    var(--bg-card, rgba(15, 23, 42, 0.65));
+  border: var(--border-glass, 1px solid rgba(255, 255, 255, 0.1));
   border-radius: var(--radius-card, var(--radius-md, 12px));
   padding: 16px;
+  box-shadow: var(--shadow-card, 0 4px 12px rgba(0, 0, 0, 0.35));
+}
+
+.panel::before {
+  content: '';
+  position: absolute;
+  inset: 0 0 auto;
+  height: 1px;
+  background: linear-gradient(90deg, transparent, var(--color-cube-primary, #06b6d4), transparent);
+  opacity: 0.55;
 }
 
 .control-list {
@@ -873,9 +928,18 @@ onUnmounted(() => {
   gap: 10px;
   padding: 10px 12px;
   border-radius: var(--radius-sm, 8px);
-  background: rgba(15, 23, 42, 0.4);
-  border: 1px solid var(--border-default, var(--border-subtle, rgba(51, 65, 102, 0.3)));
-  transition: all var(--transition-fast, 150ms);
+  background: rgba(12, 18, 25, 0.56);
+  border: 1px solid rgba(255, 255, 255, 0.065);
+  transition:
+    transform var(--transition-base, 250ms cubic-bezier(0.4, 0, 0.2, 1)),
+    border-color var(--transition-base, 250ms cubic-bezier(0.4, 0, 0.2, 1)),
+    background var(--transition-base, 250ms cubic-bezier(0.4, 0, 0.2, 1));
+}
+
+.alert-item:hover {
+  transform: translateX(3px);
+  border-color: rgba(6, 182, 212, 0.24);
+  background: rgba(6, 182, 212, 0.06);
 }
 
 .alert-item--danger {
@@ -928,10 +992,26 @@ onUnmounted(() => {
    第三区域：趋势图
    ============================================================ */
 .chart-wrapper {
-  background: var(--bg-surface, var(--bg-card, rgba(15, 23, 42, 0.65)));
-  border: 1px solid var(--border-default, var(--border-subtle, rgba(51, 65, 102, 0.45)));
+  position: relative;
+  overflow: hidden;
+  background:
+    linear-gradient(145deg, rgba(255, 255, 255, 0.052), rgba(255, 255, 255, 0.01)),
+    var(--bg-card, rgba(15, 23, 42, 0.65));
+  border: var(--border-glass, 1px solid rgba(255, 255, 255, 0.1));
   border-radius: var(--radius-card, var(--radius-md, 12px));
   padding: 16px;
+  box-shadow: var(--shadow-card, 0 4px 12px rgba(0, 0, 0, 0.35));
+}
+
+.chart-wrapper::before {
+  content: '';
+  position: absolute;
+  inset: 0 0 auto;
+  height: 2px;
+  background: linear-gradient(90deg, var(--color-cube-primary, #06b6d4), var(--color-info, #3b82f6), var(--color-cube-accent, #a3e635));
+  background-size: 200% 100%;
+  animation: border-flow 5s linear infinite;
+  opacity: 0.74;
 }
 
 .chart-container {
@@ -942,16 +1022,21 @@ onUnmounted(() => {
 /* 时间范围切换按钮 */
 .time-range-buttons {
   display: flex;
-  gap: 6px;
+  gap: 4px;
+  padding: 4px;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  border-radius: 10px;
 }
 
 .time-range-btn {
   font-family: var(--font-body, 'Inter', 'Plus Jakarta Sans', sans-serif);
   font-size: 12px;
   font-weight: 500;
-  padding: 4px 12px;
-  border-radius: var(--radius-xs, 4px);
-  border: 1px solid var(--border-default, var(--border-subtle, rgba(51, 65, 102, 0.45)));
+  min-width: 48px;
+  padding: 5px 12px;
+  border-radius: 7px;
+  border: 1px solid transparent;
   background: transparent;
   color: var(--text-secondary, #8b95b0);
   cursor: pointer;
@@ -959,15 +1044,16 @@ onUnmounted(() => {
 }
 
 .time-range-btn:hover {
-  border-color: var(--border-accent, rgba(245, 158, 11, 0.4));
+  border-color: rgba(6, 182, 212, 0.24);
   color: var(--text-primary, var(--text-main, #e8ecf4));
 }
 
 .time-range-btn--active {
-  background: var(--color-cube-primary, var(--primary, #f59e0b));
-  border-color: var(--color-cube-primary, var(--primary, #f59e0b));
+  background: linear-gradient(135deg, var(--color-cube-primary, #06b6d4), var(--color-cube-accent, #a3e635));
+  border-color: rgba(255, 255, 255, 0.1);
   color: #060a18;
   font-weight: 600;
+  box-shadow: 0 0 18px rgba(6, 182, 212, 0.2);
 }
 
 /* ============================================================
@@ -994,7 +1080,7 @@ onUnmounted(() => {
 
 @media (max-width: 640px) {
   .dashboard-page {
-    padding: 16px;
+    padding: 0;
   }
 
   .sensor-cards-grid {

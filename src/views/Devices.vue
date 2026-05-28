@@ -344,7 +344,7 @@ onMounted(() => {
 .devices-page {
   display: flex;
   flex-direction: column;
-  gap: 20px;
+  gap: 22px;
 }
 
 /* === 页面标题栏 === */
@@ -359,6 +359,18 @@ onMounted(() => {
   font-weight: 700;
   color: var(--text-primary);
   margin: 0;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.devices-title::before {
+  content: '';
+  width: 4px;
+  height: 22px;
+  border-radius: var(--radius-full);
+  background: linear-gradient(180deg, var(--color-cube-primary), var(--color-cube-accent));
+  box-shadow: 0 0 16px rgba(6, 182, 212, 0.45);
 }
 
 /* === 搜索与筛选栏 === */
@@ -366,6 +378,15 @@ onMounted(() => {
   display: flex;
   align-items: center;
   gap: 12px;
+  padding: 12px;
+  border: var(--border-glass);
+  border-radius: var(--radius-card);
+  background:
+    linear-gradient(145deg, rgba(255, 255, 255, 0.05), rgba(255, 255, 255, 0.012)),
+    rgba(12, 18, 25, 0.58);
+  box-shadow: var(--shadow-card);
+  backdrop-filter: blur(16px) saturate(1.18);
+  -webkit-backdrop-filter: blur(16px) saturate(1.18);
 }
 .devices-search {
   max-width: 320px;
@@ -387,22 +408,52 @@ onMounted(() => {
 
 /* === 设备卡片 === */
 .device-card {
-  background: var(--bg-card);
+  position: relative;
+  overflow: hidden;
+  background:
+    linear-gradient(145deg, rgba(255, 255, 255, 0.058), rgba(255, 255, 255, 0.012)),
+    var(--bg-card);
   backdrop-filter: blur(12px);
   -webkit-backdrop-filter: blur(12px);
-  border: var(--border-default);
+  border: var(--border-glass);
   border-radius: var(--radius-card);
   padding: 20px;
   display: flex;
   flex-direction: column;
   gap: 10px;
-  transition: all var(--transition-base);
+  box-shadow: var(--shadow-card);
+  transition:
+    transform var(--transition-spring),
+    border-color var(--transition-base),
+    box-shadow var(--transition-base),
+    opacity var(--transition-base);
   animation: fade-up-blur 0.5s cubic-bezier(0.16, 1, 0.3, 1) both;
 }
+.device-card::before {
+  content: '';
+  position: absolute;
+  inset: 0 0 auto;
+  height: 2px;
+  background: linear-gradient(90deg, var(--color-cube-primary), var(--color-cube-accent), transparent);
+  opacity: 0.72;
+}
+.device-card::after {
+  content: '';
+  position: absolute;
+  top: -40%;
+  right: -38%;
+  width: 72%;
+  height: 180%;
+  background:
+    repeating-linear-gradient(90deg, rgba(255, 255, 255, 0.045) 0 1px, transparent 1px 14px);
+  transform: rotate(16deg);
+  opacity: 0.12;
+  pointer-events: none;
+}
 .device-card:hover {
-  border-color: var(--border-hover);
-  box-shadow: var(--shadow-elevated);
-  transform: translateY(-2px);
+  border-color: rgba(6, 182, 212, 0.36);
+  box-shadow: var(--shadow-holo);
+  transform: translateY(-5px);
 }
 
 /* 离线设备降低对比度 */
@@ -416,6 +467,8 @@ onMounted(() => {
   font-size: 16px;
   font-weight: 500;
   color: var(--text-primary);
+  position: relative;
+  z-index: 1;
 }
 
 /* 设备 ID */
@@ -424,6 +477,8 @@ onMounted(() => {
   font-size: 12px;
   color: var(--text-secondary);
   letter-spacing: 0.5px;
+  position: relative;
+  z-index: 1;
 }
 
 /* 状态与芯片信息 */
@@ -431,6 +486,8 @@ onMounted(() => {
   display: flex;
   align-items: center;
   justify-content: space-between;
+  position: relative;
+  z-index: 1;
 }
 .device-card__status {
   display: flex;
@@ -443,18 +500,26 @@ onMounted(() => {
   font-size: 12px;
   color: var(--text-secondary);
   font-family: var(--font-mono);
+  padding: 3px 8px;
+  border-radius: var(--radius-full);
+  background: rgba(255, 255, 255, 0.045);
+  border: 1px solid rgba(255, 255, 255, 0.055);
 }
 
 /* 固件版本 */
 .device-card__firmware {
   font-size: 12px;
   color: var(--text-secondary);
+  position: relative;
+  z-index: 1;
 }
 
 /* 最后心跳 */
 .device-card__heartbeat {
   font-size: 12px;
   color: var(--text-secondary);
+  position: relative;
+  z-index: 1;
 }
 
 /* 操作按钮 */
@@ -462,6 +527,8 @@ onMounted(() => {
   display: flex;
   gap: 8px;
   margin-top: 4px;
+  position: relative;
+  z-index: 1;
 }
 
 /* === 空状态 === */
@@ -473,6 +540,9 @@ onMounted(() => {
   justify-content: center;
   padding: 60px 20px;
   color: var(--text-disabled);
+  border: 1px dashed rgba(255, 255, 255, 0.08);
+  border-radius: var(--radius-card);
+  background: rgba(255, 255, 255, 0.025);
 }
 .devices-empty__icon {
   margin-bottom: 16px;
@@ -501,7 +571,8 @@ onMounted(() => {
   font-size: 13px;
   color: var(--text-secondary);
   padding: 10px 12px;
-  background: var(--bg-elevated);
+  background: rgba(255, 255, 255, 0.045);
+  border: 1px solid rgba(255, 255, 255, 0.055);
   border-radius: var(--radius-button);
   font-family: var(--font-mono);
 }
@@ -509,7 +580,7 @@ onMounted(() => {
 /* === Element Plus 覆盖 === */
 .devices-toolbar :deep(.el-input__wrapper),
 .devices-toolbar :deep(.el-select .el-input__wrapper) {
-  background: var(--bg-surface);
+  background: rgba(9, 13, 18, 0.68);
   border: var(--border-default);
   box-shadow: none;
 }
@@ -520,7 +591,7 @@ onMounted(() => {
 .devices-toolbar :deep(.el-input__wrapper.is-focus),
 .devices-toolbar :deep(.el-select .el-input__wrapper.is-focus) {
   border-color: var(--color-cube-primary);
-  box-shadow: 0 0 0 1px rgba(6, 182, 212, 0.2);
+  box-shadow: 0 0 0 1px rgba(6, 182, 212, 0.2), 0 0 18px rgba(6, 182, 212, 0.12);
 }
 .devices-toolbar :deep(.el-input__inner) {
   color: var(--text-primary);

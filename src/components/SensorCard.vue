@@ -1,11 +1,15 @@
 <template>
-  <div class="sensor-card" :class="`sensor-card--${status}`">
+  <div
+    class="sensor-card"
+    :class="`sensor-card--${status}`"
+    :style="{ '--sensor-color': resolvedColor }"
+  >
     <!-- 头部：图标 + 标题 + 状态 -->
     <div class="sensor-card__header">
       <div class="sensor-card__title-group">
         <span
           class="sensor-card__icon-bg"
-          :style="{ backgroundColor: `${resolvedColor}20` }"
+          :style="{ backgroundColor: iconTint }"
         >
           <span class="sensor-card__icon" :style="{ color: resolvedColor }">
             {{ icon }}
@@ -82,11 +86,20 @@ const gradientId = computed(() => `sensor-trend-${Math.random().toString(36).sli
 const resolvedColor = computed(() => {
   if (props.color) return props.color
   const colorMap: Record<string, string> = {
-    normal: 'var(--color-info, var(--status-info, #3b82f6))',
-    warning: 'var(--color-warning, var(--status-warn, #f59e0b))',
-    danger: 'var(--color-danger, var(--status-danger, #ef4444))',
+    normal: '#3B82F6',
+    warning: '#F59E0B',
+    danger: '#EF4444',
   }
-  return colorMap[props.status] || 'var(--color-info, var(--status-info, #3b82f6))'
+  return colorMap[props.status] || '#3B82F6'
+})
+
+const iconTint = computed(() => {
+  const tintMap: Record<string, string> = {
+    normal: 'rgba(59, 130, 246, 0.16)',
+    warning: 'rgba(245, 158, 11, 0.16)',
+    danger: 'rgba(239, 68, 68, 0.16)',
+  }
+  return props.color ? `${props.color}22` : tintMap[props.status]
 })
 
 // 状态文字
@@ -129,19 +142,47 @@ const areaPoints = computed(() => {
 
 <style scoped>
 .sensor-card {
-  background: var(--bg-surface, var(--bg-card, rgba(15, 23, 42, 0.65)));
-  border: 1px solid var(--border-default, var(--border-subtle, rgba(51, 65, 102, 0.45)));
+  position: relative;
+  overflow: hidden;
+  background:
+    linear-gradient(145deg, rgba(255, 255, 255, 0.06), rgba(255, 255, 255, 0.012)),
+    var(--bg-card, rgba(15, 23, 42, 0.65));
+  border: var(--border-glass, 1px solid rgba(255, 255, 255, 0.1));
   border-radius: var(--radius-card, var(--radius-md, 12px));
   box-shadow: var(--shadow-card, var(--shadow-md, 0 4px 12px rgba(0, 0, 0, 0.35)));
-  padding: 16px;
-  transition: all var(--transition-base, 250ms cubic-bezier(0.4, 0, 0.2, 1));
+  padding: 18px;
+  transition:
+    transform var(--transition-spring, 420ms cubic-bezier(0.2, 0.9, 0.2, 1)),
+    border-color var(--transition-base, 250ms cubic-bezier(0.4, 0, 0.2, 1)),
+    box-shadow var(--transition-base, 250ms cubic-bezier(0.4, 0, 0.2, 1));
   animation: fade-up-blur 0.5s cubic-bezier(0.16, 1, 0.3, 1) both;
   cursor: default;
 }
 
+.sensor-card::before {
+  content: '';
+  position: absolute;
+  inset: 0 0 auto;
+  height: 2px;
+  background: linear-gradient(90deg, var(--sensor-color), transparent 76%);
+  opacity: 0.9;
+}
+
+.sensor-card::after {
+  content: '';
+  position: absolute;
+  inset: auto -18% -44% 46%;
+  height: 112px;
+  background: linear-gradient(135deg, transparent, color-mix(in srgb, var(--sensor-color) 20%, transparent), transparent);
+  transform: rotate(-12deg);
+  opacity: 0.55;
+  pointer-events: none;
+}
+
 .sensor-card:hover {
-  transform: translateY(-2px);
-  border-color: var(--border-accent, rgba(245, 158, 11, 0.3));
+  transform: translateY(-5px);
+  border-color: color-mix(in srgb, var(--sensor-color) 36%, rgba(255, 255, 255, 0.12));
+  box-shadow: 0 0 28px color-mix(in srgb, var(--sensor-color) 18%, transparent), var(--shadow-elevated, 0 10px 15px rgba(0, 0, 0, 0.3));
 }
 
 /* 头部 */
@@ -150,6 +191,8 @@ const areaPoints = computed(() => {
   align-items: center;
   justify-content: space-between;
   margin-bottom: 12px;
+  position: relative;
+  z-index: 1;
 }
 
 .sensor-card__title-group {
@@ -159,13 +202,15 @@ const areaPoints = computed(() => {
 }
 
 .sensor-card__icon-bg {
-  width: 28px;
-  height: 28px;
-  border-radius: var(--radius-xs, 4px);
+  width: 32px;
+  height: 32px;
+  border-radius: 8px;
   display: flex;
   align-items: center;
   justify-content: center;
   flex-shrink: 0;
+  border: 1px solid color-mix(in srgb, var(--sensor-color) 24%, transparent);
+  box-shadow: inset 0 0 16px color-mix(in srgb, var(--sensor-color) 10%, transparent);
 }
 
 .sensor-card__icon {
@@ -189,6 +234,7 @@ const areaPoints = computed(() => {
   letter-spacing: 0.5px;
   padding: 2px 8px;
   border-radius: var(--radius-xs, 4px);
+  border: 1px solid rgba(255, 255, 255, 0.055);
 }
 
 .sensor-card__status--normal {
@@ -212,6 +258,8 @@ const areaPoints = computed(() => {
   align-items: baseline;
   gap: 4px;
   margin-bottom: 12px;
+  position: relative;
+  z-index: 1;
 }
 
 .sensor-card__value {
@@ -220,6 +268,7 @@ const areaPoints = computed(() => {
   font-weight: 500;
   color: var(--text-primary, var(--text-main, #e8ecf4));
   line-height: 1.1;
+  text-shadow: 0 0 18px color-mix(in srgb, var(--sensor-color) 18%, transparent);
 }
 
 .sensor-card__unit {
@@ -232,6 +281,10 @@ const areaPoints = computed(() => {
 .sensor-card__trend {
   height: 32px;
   width: 100%;
+  position: relative;
+  z-index: 1;
+  padding-top: 4px;
+  border-top: 1px solid rgba(255, 255, 255, 0.055);
 }
 
 .sensor-card__trend-svg {

@@ -172,26 +172,56 @@ async function handleDemoLogin() {
   align-items: center;
   justify-content: center;
   background: var(--bg-canvas);
-  background-image: radial-gradient(circle at 1px 1px, rgba(51, 65, 102, 0.15) 1px, transparent 0);
-  background-size: 24px 24px;
+  background-image:
+    linear-gradient(135deg, rgba(6, 182, 212, 0.09), transparent 32%),
+    linear-gradient(225deg, rgba(163, 230, 53, 0.055), transparent 34%),
+    repeating-linear-gradient(90deg, rgba(255, 255, 255, 0.028) 0 1px, transparent 1px 36px),
+    repeating-linear-gradient(0deg, rgba(255, 255, 255, 0.02) 0 1px, transparent 1px 36px);
+  padding: 24px;
 }
 
 /* 登录卡片：玻璃拟态 */
 .login-card {
+  position: relative;
+  overflow: hidden;
   width: 420px;
   padding: 40px;
-  background: var(--bg-card);
-  backdrop-filter: blur(16px) saturate(1.3);
-  -webkit-backdrop-filter: blur(16px) saturate(1.3);
-  border: var(--border-default);
+  background:
+    linear-gradient(145deg, rgba(255, 255, 255, 0.07), rgba(255, 255, 255, 0.015)),
+    var(--bg-card);
+  backdrop-filter: blur(20px) saturate(1.3);
+  -webkit-backdrop-filter: blur(20px) saturate(1.3);
+  border: var(--border-glass);
   border-radius: var(--radius-lg);
-  box-shadow: var(--shadow-lg);
+  box-shadow: var(--shadow-lg), 0 0 40px rgba(6, 182, 212, 0.08);
   animation: slide-up 0.5s cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+.login-card::before {
+  content: '';
+  position: absolute;
+  inset: 0 0 auto;
+  height: 2px;
+  background: linear-gradient(90deg, var(--color-cube-primary), var(--color-cube-accent), var(--color-cube-violet));
+  background-size: 200% 100%;
+  animation: border-flow 4s linear infinite;
+}
+
+.login-card::after {
+  content: '';
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: 36%;
+  background: repeating-linear-gradient(90deg, rgba(255, 255, 255, 0.045) 0 1px, transparent 1px 16px);
+  opacity: 0.08;
+  pointer-events: none;
 }
 
 .login-header {
   text-align: center;
   margin-bottom: 36px;
+  position: relative;
+  z-index: 1;
 }
 
 /* 魔方 Logo */
@@ -204,7 +234,7 @@ async function handleDemoLogin() {
 .cube-icon {
   width: 48px;
   height: 48px;
-  filter: drop-shadow(0 0 12px rgba(6, 182, 212, 0.4));
+  filter: drop-shadow(0 0 16px rgba(6, 182, 212, 0.5));
 }
 
 .login-title {
@@ -226,6 +256,8 @@ async function handleDemoLogin() {
 .login-form {
   display: flex;
   flex-direction: column;
+  position: relative;
+  z-index: 1;
 }
 
 .login-btn {
@@ -251,7 +283,7 @@ async function handleDemoLogin() {
   content: '';
   flex: 1;
   height: 1px;
-  background: var(--border-default);
+  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.16), transparent);
 }
 
 .demo-btn {

@@ -58,6 +58,18 @@ const router = createRouter({
           component: () => import('@/views/AiAnalysis.vue'),
           meta: { title: 'AI 分析' },
         },
+        {
+          path: 'logs',
+          name: 'logs',
+          component: () => import('@/views/LogCenter.vue'),
+          meta: { title: '日志中心' },
+        },
+        {
+          path: 'admin',
+          name: 'admin',
+          component: () => import('@/views/AdminPanel.vue'),
+          meta: { title: '管理员后台' },
+        },
       ],
     },
     // 404 兜底：重定向到控制台
@@ -77,6 +89,10 @@ router.beforeEach((to) => {
   // 需要认证但用户未登录：重定向到登录页
   if (to.meta.requiresAuth && !authStore.isLoggedIn && !isDemo) {
     return { name: 'login' }
+  }
+
+  if (to.name === 'admin' && !authStore.isAdmin && !isDemo) {
+    return { path: '/dashboard' }
   }
 
   // 已登录用户访问登录页或注册页：重定向到控制台

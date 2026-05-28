@@ -164,26 +164,55 @@ async function handleRegister() {
   justify-content: center;
   background: var(--bg-canvas);
   background-image:
-    radial-gradient(circle at 1px 1px, rgba(51, 65, 102, 0.15) 1px, transparent 0);
-  background-size: 24px 24px;
+    linear-gradient(135deg, rgba(6, 182, 212, 0.09), transparent 32%),
+    linear-gradient(225deg, rgba(139, 92, 246, 0.06), transparent 34%),
+    repeating-linear-gradient(90deg, rgba(255, 255, 255, 0.028) 0 1px, transparent 1px 36px),
+    repeating-linear-gradient(0deg, rgba(255, 255, 255, 0.02) 0 1px, transparent 1px 36px);
+  padding: 24px;
 }
 
 /* 注册卡片：玻璃拟态 */
 .register-card {
+  position: relative;
+  overflow: hidden;
   width: 420px;
   padding: 40px;
-  background: var(--bg-card);
-  backdrop-filter: blur(16px) saturate(1.3);
-  -webkit-backdrop-filter: blur(16px) saturate(1.3);
-  border: var(--border-default);
+  background:
+    linear-gradient(145deg, rgba(255, 255, 255, 0.07), rgba(255, 255, 255, 0.015)),
+    var(--bg-card);
+  backdrop-filter: blur(20px) saturate(1.3);
+  -webkit-backdrop-filter: blur(20px) saturate(1.3);
+  border: var(--border-glass);
   border-radius: var(--radius-lg);
-  box-shadow: var(--shadow-lg);
+  box-shadow: var(--shadow-lg), 0 0 40px rgba(139, 92, 246, 0.08);
   animation: slide-up 0.5s cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+.register-card::before {
+  content: '';
+  position: absolute;
+  inset: 0 0 auto;
+  height: 2px;
+  background: linear-gradient(90deg, var(--color-cube-primary), var(--color-cube-violet), var(--color-cube-accent));
+  background-size: 200% 100%;
+  animation: border-flow 4s linear infinite;
+}
+
+.register-card::after {
+  content: '';
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: 36%;
+  background: repeating-linear-gradient(90deg, rgba(255, 255, 255, 0.045) 0 1px, transparent 1px 16px);
+  opacity: 0.08;
+  pointer-events: none;
 }
 
 .register-header {
   text-align: center;
   margin-bottom: 30px;
+  position: relative;
+  z-index: 1;
 }
 
 /* 魔方 Logo */
@@ -196,7 +225,7 @@ async function handleRegister() {
 .cube-icon {
   width: 48px;
   height: 48px;
-  filter: drop-shadow(0 0 12px rgba(6, 182, 212, 0.4));
+  filter: drop-shadow(0 0 16px rgba(6, 182, 212, 0.5));
 }
 
 .register-title {
@@ -210,6 +239,11 @@ async function handleRegister() {
 .register-btn {
   width: 100%;
   margin-top: 12px;
+}
+
+.register-card :deep(.el-form) {
+  position: relative;
+  z-index: 1;
 }
 
 .login-link {

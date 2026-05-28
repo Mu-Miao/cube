@@ -39,6 +39,18 @@
               <span class="risk-value">{{ gasRiskText }}</span>
             </div>
           </div>
+          <div
+            v-for="risk in riskItems"
+            :key="`${risk.field}-${risk.title}`"
+            class="risk-item"
+            :class="risk.level === 'critical' ? 'risk-critical' : 'risk-medium'"
+          >
+            <span class="risk-icon">{{ risk.level === 'critical' ? '\u26A0' : '!' }}</span>
+            <div class="risk-info">
+              <span class="risk-label">{{ risk.title }}</span>
+              <span class="risk-value">{{ risk.message }}</span>
+            </div>
+          </div>
         </div>
       </div>
 
@@ -80,7 +92,7 @@ import { ref, computed, onMounted, onBeforeUnmount, watch } from 'vue'
 import * as echarts from 'echarts'
 import { useDeviceStore } from '@/store/device'
 import { getLatestData } from '@/api/device'
-import { getAiSuggestions, getEnvironmentScore } from '@/api/ai'
+import { getAiSuggestions, getEnvironmentScore, getRiskWarnings, getWeeklyReport } from '@/api/ai'
 import { showInfoToast } from '@/utils/alert'
 
 defineOptions({ name: 'AiAnalysisPage' })
@@ -122,6 +134,7 @@ const moldRiskIcon = computed(() => moldRiskIcons[moldRisk.value] ?? '\u2713')
 const gasRiskText = computed(() => (gasValue.value === 0 ? '正常' : '异常'))
 const gasRiskClass = computed(() => (gasValue.value === 0 ? 'risk-low' : 'risk-critical'))
 const gasRiskIcon = computed(() => (gasValue.value === 0 ? '\u2713' : '\u26A0'))
+const riskItems = ref<Array<{ field: string; level: 'warning' | 'critical'; title: string; message: string }>>([])
 
 // ---------- 智能建议（模拟数据） ----------
 const suggestions = ref([
@@ -177,6 +190,27 @@ async function fetchAiAnalysis() {
     }
   } catch {
     // 保留本地模拟建议作为兜底
+  }
+}
+
+async function fetchRisksAndWeeklyReport() {
+  const deviceId = deviceStore.selectedDeviceId
+  if (!deviceId) return
+  try {
+    const [riskData, weeklyData] = await Promise.all([
+      getRiskWarnings(deviceId),
+      getWeeklyReport(deviceId),
+    ])
+    riskItems.value = riskData.risks || []
+    if (weeklyData.days?.length) {
+      const labels = weeklyData.days.map((item) => item.date.slice(5))
+      const temperature = weeklyData.days.map((item) => item.temperature ?? 0)
+      const humidity = weeklyData.days.map((item) => item.humidity ?? 0)
+      const aqi = weeklyData.days.map((item) => item.aqi ?? 0)
+      updateWeeklyChart(labels, temperature, humidity, aqi)
+    }
+  } catch {
+    // 周报和风险接口失败时保留页面兜底数据
   }
 }
 
@@ -284,6 +318,16 @@ const mockWeeklyData = {
 function initWeeklyChart() {
   if (!weeklyChartRef.value) return
   weeklyChart = echarts.init(weeklyChartRef.value)
+  updateWeeklyChart(weekDays, mockWeeklyData.temperature, mockWeeklyData.humidity, mockWeeklyData.aqi)
+}
+
+function updateWeeklyChart(
+  labels: string[],
+  temperature: number[],
+  humidity: number[],
+  aqi: number[],
+) {
+  if (!weeklyChart) return
   weeklyChart.setOption({
     tooltip: {
       trigger: 'axis',
@@ -304,7 +348,7 @@ function initWeeklyChart() {
     },
     xAxis: {
       type: 'category',
-      data: weekDays,
+      data: labels,
       axisLine: { lineStyle: { color: 'rgba(255,255,255,0.06)' } },
       axisLabel: { color: '#9CA3AF', fontFamily: 'Inter, sans-serif' },
     },
@@ -331,7 +375,7 @@ function initWeeklyChart() {
         name: '温度 (\u2103)',
         type: 'bar',
         yAxisIndex: 0,
-        data: mockWeeklyData.temperature,
+        data: temperature,
         barWidth: '20%',
         itemStyle: {
           color: new echarts.graphic.LinearGradient(0, 0, 0, 1, [
@@ -345,7 +389,7 @@ function initWeeklyChart() {
         name: '湿度 (%)',
         type: 'line',
         yAxisIndex: 1,
-        data: mockWeeklyData.humidity,
+        data: humidity,
         smooth: true,
         symbol: 'circle',
         symbolSize: 6,
@@ -362,7 +406,7 @@ function initWeeklyChart() {
         name: 'AQI',
         type: 'line',
         yAxisIndex: 1,
-        data: mockWeeklyData.aqi,
+        data: aqi,
         smooth: true,
         symbol: 'diamond',
         symbolSize: 6,
@@ -390,6 +434,7 @@ onMounted(() => {
   initWeeklyChart()
   fetchSensorData()
   fetchAiAnalysis()
+  fetchRisksAndWeeklyReport()
   window.addEventListener('resize', handleResize)
 })
 
@@ -403,6 +448,7 @@ onBeforeUnmount(() => {
 watch(() => deviceStore.selectedDeviceId, () => {
   fetchSensorData()
   fetchAiAnalysis()
+  fetchRisksAndWeeklyReport()
 })
 </script>
 
@@ -415,12 +461,28 @@ watch(() => deviceStore.selectedDeviceId, () => {
 }
 
 .section {
-  background: var(--bg-card);
+  position: relative;
+  overflow: hidden;
+  background:
+    linear-gradient(145deg, rgba(255, 255, 255, 0.058), rgba(255, 255, 255, 0.012)),
+    var(--bg-card);
   backdrop-filter: blur(16px) saturate(1.3);
   -webkit-backdrop-filter: blur(16px) saturate(1.3);
-  border: var(--border-default);
+  border: var(--border-glass);
   border-radius: var(--radius-card);
   padding: var(--spacing-card);
+  box-shadow: var(--shadow-card);
+}
+
+.section::before {
+  content: '';
+  position: absolute;
+  inset: 0 0 auto;
+  height: 2px;
+  background: linear-gradient(90deg, var(--color-cube-violet), var(--color-cube-primary), var(--color-cube-accent));
+  background-size: 200% 100%;
+  opacity: 0.7;
+  animation: border-flow 5s linear infinite;
 }
 
 .section-title {
@@ -430,6 +492,18 @@ watch(() => deviceStore.selectedDeviceId, () => {
   color: var(--text-primary);
   margin-bottom: var(--spacing-module);
   letter-spacing: 0.5px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.section-title::before {
+  content: '';
+  width: 4px;
+  height: 17px;
+  border-radius: var(--radius-full);
+  background: linear-gradient(180deg, var(--color-cube-violet), var(--color-cube-primary));
+  box-shadow: 0 0 14px rgba(139, 92, 246, 0.38);
 }
 
 /* ---- 环境综合评分 ---- */
@@ -461,15 +535,31 @@ watch(() => deviceStore.selectedDeviceId, () => {
   display: grid;
   grid-template-columns: 1fr 1fr;
   gap: var(--spacing-card);
+  padding: 0;
+  background: transparent;
+  border: 0;
+  box-shadow: none;
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+  overflow: visible;
+}
+
+.alert-suggest-row::before {
+  display: none;
 }
 
 .panel {
-  background: var(--bg-card);
+  position: relative;
+  overflow: hidden;
+  background:
+    linear-gradient(145deg, rgba(255, 255, 255, 0.052), rgba(255, 255, 255, 0.012)),
+    var(--bg-card);
   backdrop-filter: blur(16px) saturate(1.3);
   -webkit-backdrop-filter: blur(16px) saturate(1.3);
-  border: var(--border-default);
+  border: var(--border-glass);
   border-radius: var(--radius-card);
   padding: var(--spacing-card);
+  box-shadow: var(--shadow-card);
 }
 
 /* ---- 风险预警 ---- */
@@ -485,7 +575,16 @@ watch(() => deviceStore.selectedDeviceId, () => {
   gap: var(--spacing-element);
   padding: 12px 16px;
   border-radius: var(--radius-button);
-  transition: background var(--transition-fast);
+  border: 1px solid rgba(255, 255, 255, 0.055);
+  transition:
+    transform var(--transition-base),
+    background var(--transition-fast),
+    border-color var(--transition-base);
+}
+
+.risk-item:hover {
+  transform: translateX(3px);
+  border-color: rgba(6, 182, 212, 0.24);
 }
 
 .risk-item.risk-low {
@@ -548,14 +647,19 @@ watch(() => deviceStore.selectedDeviceId, () => {
   align-items: flex-start;
   gap: var(--spacing-element);
   padding: 12px 16px;
-  background: rgba(255, 255, 255, 0.02);
-  border: 1px solid rgba(255, 255, 255, 0.04);
+  background: rgba(255, 255, 255, 0.035);
+  border: 1px solid rgba(255, 255, 255, 0.055);
   border-radius: var(--radius-button);
-  transition: background var(--transition-fast);
+  transition:
+    transform var(--transition-base),
+    background var(--transition-fast),
+    border-color var(--transition-base);
 }
 
 .suggest-item:hover {
-  background: rgba(255, 255, 255, 0.04);
+  transform: translateX(3px);
+  background: rgba(139, 92, 246, 0.08);
+  border-color: rgba(139, 92, 246, 0.22);
 }
 
 .suggest-icon {
