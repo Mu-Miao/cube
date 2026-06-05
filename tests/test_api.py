@@ -240,6 +240,92 @@ async def test_data_history(client: AsyncClient):
 
 
 @pytest.mark.asyncio
+async def test_data_upload_accepts_nested_hardware_payload(client: AsyncClient):
+    device_id = "NESTED01"
+    await client.post(
+        "/api/v1/auth/register",
+        json={
+            "username": "nested_user",
+            "password": "test123456",
+        },
+    )
+    resp = await client.post(
+        "/api/v1/auth/login",
+        json={
+            "username": "nested_user",
+            "password": "test123456",
+        },
+    )
+    headers = {"Authorization": f"Bearer {resp.json()['data']['access_token']}"}
+
+    resp = await client.post(
+        "/api/v1/device/auth",
+        json={
+            "device_id": device_id,
+            "timestamp": 1713880000,
+            "type": "handshake",
+            "chip_model": "ESP32-S3",
+            "version": "v0.9.0",
+        },
+    )
+    device_token = resp.json()["token"]
+
+    await client.post(
+        "/api/v1/device/bind",
+        json={
+            "device_id": device_id,
+            "device_name": "嵌套数据设备",
+        },
+        headers=headers,
+    )
+
+    resp = await client.post(
+        "/api/v1/data/upload",
+        json={
+            "device_id": device_id,
+            "token": device_token,
+            "timestamp": int(time.time()),
+            "type": "data_report",
+            "data": {
+                "data": {
+                    "temperature": 26.8,
+                    "humidity": 58.5,
+                    "illuminance": 520,
+                    "aqi": 42,
+                    "tvoc": 160,
+                    "eco2": 680,
+                    "mold_risk": 0,
+                    "gas": 0,
+                    "version": "1.0",
+                },
+                "status": {
+                    "wifi_connected": True,
+                    "mqtt_connected": True,
+                    "screen_normal": True,
+                    "sensor_normal": True,
+                    "focus_mode": True,
+                },
+            },
+        },
+    )
+    assert resp.status_code == 200
+    assert resp.json()["code"] == 200
+
+    resp = await client.get(f"/api/v1/data/{device_id}/latest", headers=headers)
+    body = resp.json()
+    assert body["code"] == 0
+    assert body["data"]["temperature"] == 26.8
+    assert body["data"]["humidity"] == 58.5
+    assert body["data"]["focus_mode"] is True
+    assert body["data"]["wifi_rssi"] is None
+
+    resp = await client.get("/api/v1/device/list", headers=headers)
+    devices = resp.json()["data"]
+    target = next(device for device in devices if device["device_id"] == device_id)
+    assert target["firmware_version"] == "1.0"
+
+
+@pytest.mark.asyncio
 async def test_health_check(client: AsyncClient):
     resp = await client.get("/health")
     assert resp.status_code == 200

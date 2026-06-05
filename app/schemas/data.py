@@ -5,7 +5,7 @@
 from datetime import datetime
 from typing import Optional
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 
 
 class SensorDataPayload(BaseModel):
@@ -21,8 +21,8 @@ class SensorDataPayload(BaseModel):
     eco2: float = Field(..., description="CO₂ 等效浓度（ppm）")
     mold_risk: float = Field(..., description="霉菌风险等级（0-3）")
     gas: float = Field(..., description="燃气浓度（0=正常）")
-    wifi_rssi: int = Field(..., description="WiFi 信号强度（dBm）")
-    version: str = Field(..., description="固件版本号")
+    wifi_rssi: Optional[int] = Field(None, description="WiFi 信号强度（dBm）")
+    version: Optional[str] = Field(None, description="固件版本号")
 
 
 class DeviceDataReport(BaseModel):
@@ -37,6 +37,31 @@ class DeviceDataReport(BaseModel):
     type: str = "data_report"  # 消息类型
     data: SensorDataPayload  # 传感器数据
     status: Optional[dict] = None  # 设备状态（可选）
+
+    @model_validator(mode="before")
+    @classmethod
+    def unwrap_nested_hardware_payload(cls, values):
+        """
+        兼容硬件 MQTT/HTTP 上报格式：
+        { data: { data: {...sensor}, status: {...status} } }
+        """
+        if not isinstance(values, dict):
+            return values
+
+        payload = values.get("data")
+        if not isinstance(payload, dict):
+            return values
+
+        nested_sensor_data = payload.get("data")
+        nested_status = payload.get("status")
+        if isinstance(nested_sensor_data, dict):
+            normalized = values.copy()
+            normalized["data"] = nested_sensor_data
+            if normalized.get("status") is None and isinstance(nested_status, dict):
+                normalized["status"] = nested_status
+            return normalized
+
+        return values
 
 
 class DataUploadAck(BaseModel):

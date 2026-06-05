@@ -67,6 +67,8 @@ async def upload_sensor_data(
     # 更新设备在线状态（数据上报也视为心跳）
     device.status = "online"
     device.last_seen = datetime.now(timezone.utc)
+    if payload.data.version:
+        device.firmware_version = payload.data.version
 
     await db.flush()
 

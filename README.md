@@ -187,6 +187,64 @@ python -m pytest tests/
 | GET | `/api/v1/data/{device_id}/latest` | 最新数据 |
 | GET | `/api/v1/data/{device_id}/history` | 历史数据 |
 
+设备数据上报同时兼容两种 JSON 结构：
+
+```json
+{
+  "device_id": "DEMO-CUBE-001",
+  "token": "dev_xxx",
+  "timestamp": 1713880035,
+  "type": "data_report",
+  "data": {
+    "temperature": 25.6,
+    "humidity": 60.5,
+    "illuminance": 500,
+    "aqi": 35,
+    "tvoc": 120,
+    "eco2": 450,
+    "mold_risk": 0,
+    "gas": 0,
+    "version": "1.0"
+  },
+  "status": {
+    "focus_mode": false
+  }
+}
+```
+
+也兼容硬件 MQTT 当前使用的嵌套结构：
+
+```json
+{
+  "device_id": "DEMO-CUBE-001",
+  "token": "dev_xxx",
+  "timestamp": 1713880035,
+  "type": "data_report",
+  "data": {
+    "data": {
+      "temperature": 25.6,
+      "humidity": 60.5,
+      "illuminance": 500,
+      "aqi": 35,
+      "tvoc": 120,
+      "eco2": 450,
+      "mold_risk": 0,
+      "gas": 0,
+      "version": "1.0"
+    },
+    "status": {
+      "wifi_connected": true,
+      "mqtt_connected": true,
+      "screen_normal": true,
+      "sensor_normal": true,
+      "focus_mode": false
+    }
+  }
+}
+```
+
+`wifi_rssi` 为可选字段；如果硬件未上报，后端会保存为空。
+
 ### 设备控制
 
 | 方法 | 路径 | 说明 |

@@ -6,14 +6,13 @@ import json
 import time
 from datetime import datetime, timezone
 
-from sqlalchemy.ext.asyncio import AsyncSession
+from loguru import logger
 
-from app.config import settings
 from app.db.session import async_session_factory
 from app.models.device import Device
 from app.models.sensor_data import SensorData
 from app.mqtt.client import mqtt_client
-from app.mqtt.topics import get_status_topic, get_data_topic, get_control_topic
+from app.mqtt.topics import get_status_topic, get_data_topic
 from app.websocket.manager import ws_manager
 from app.services.alert_service import check_alerts
 
@@ -32,10 +31,12 @@ async def handle_mqtt_message(topic: str, payload: bytes) -> None:
     try:
         data = json.loads(payload.decode("utf-8"))
     except (json.JSONDecodeError, UnicodeDecodeError):
+        logger.warning("忽略无效 MQTT 消息: topic={}", topic)
         return  # 忽略格式错误的消息
 
     msg_type = data.get("type", "")
     device_id = data.get("device_id", "")
+    logger.info("收到 MQTT 消息: topic={}, type={}, device_id={}", topic, msg_type, device_id)
 
     # 根据消息类型分发处理
     handlers = {
@@ -48,6 +49,8 @@ async def handle_mqtt_message(topic: str, payload: bytes) -> None:
     handler = handlers.get(msg_type)
     if handler:
         await handler(device_id, data)
+    else:
+        logger.warning("未处理的 MQTT 消息类型: type={}, device_id={}", msg_type, device_id)
 
 
 async def _handle_handshake(device_id: str, data: dict) -> None:
@@ -78,6 +81,12 @@ async def _handle_handshake(device_id: str, data: dict) -> None:
         device.status = "online"
         device.last_seen = datetime.now(timezone.utc)
         await db.commit()
+        logger.info(
+            "设备握手成功: device_id={}, chip_model={}, version={}",
+            device_id,
+            data.get("chip_model"),
+            data.get("version"),
+        )
 
     # 回复 handshake_ack（协议: 握手响应协议.json）
     ack_payload = json.dumps({
@@ -86,7 +95,7 @@ async def _handle_handshake(device_id: str, data: dict) -> None:
         "msg": "握手成功",
         "timestamp": int(time.time()),
         "token": device_token,
-        "expire_time": 86400,
+        "expire_time": 600,
     })
     await mqtt_client.publish(get_status_topic(device_id), ack_payload.encode())
 
@@ -105,15 +114,23 @@ async def _handle_heartbeat(device_id: str, data: dict) -> None:
         device = result.scalar_one_or_none()
 
         if not device:
+            logger.warning("心跳忽略: 设备未注册 device_id={}", device_id)
             return  # 设备未注册，忽略心跳
 
         # 验证 Token
         if device.token != data.get("token"):
+            logger.warning(
+                "心跳 Token 无效: device_id={}, incoming_token={}, expected_token={}",
+                device_id,
+                data.get("token"),
+                device.token,
+            )
             return
 
         device.status = "online"
         device.last_seen = datetime.now(timezone.utc)
         await db.commit()
+        logger.info("设备心跳成功: device_id={}", device_id)
 
     # 回复 heartbeat_ack
     ack_payload = json.dumps({
@@ -135,10 +152,16 @@ async def _handle_data_report(device_id: str, data: dict) -> None:
     处理传感器数据上报
     协议: 数据上报协议.json（结构: data.data.xxx, data.status.xxx）
     """
-    # 协议嵌套结构: { data: { data: {...}, status: {...} } }
+    # 支持两种结构:
+    # 1. 硬件 MQTT: { data: { data: {...}, status: {...} } }
+    # 2. 扁平格式: { data: {...}, status: {...} }
     payload = data.get("data", {})
-    sensor_data = payload.get("data", {})
-    status_data = payload.get("status", {})
+    if isinstance(payload, dict) and isinstance(payload.get("data"), dict):
+        sensor_data = payload.get("data", {})
+        status_data = payload.get("status", {})
+    else:
+        sensor_data = payload if isinstance(payload, dict) else {}
+        status_data = data.get("status", {})
 
     async with async_session_factory() as db:
         from sqlalchemy import select
@@ -147,7 +170,25 @@ async def _handle_data_report(device_id: str, data: dict) -> None:
         result = await db.execute(select(Device).where(Device.device_id == device_id))
         device = result.scalar_one_or_none()
 
-        if not device or device.token != data.get("token"):
+        if not device:
+            logger.warning("数据上报失败: 设备未注册 device_id={}", device_id)
+            ack_payload = json.dumps({
+                "code": 404,
+                "type": "data_report_ack",
+                "msg": "设备未注册",
+                "timestamp": int(time.time()),
+                "receive_status": False,
+            })
+            await mqtt_client.publish(get_data_topic(device_id), ack_payload.encode())
+            return
+
+        if device.token != data.get("token"):
+            logger.warning(
+                "数据上报 Token 无效: device_id={}, incoming_token={}, expected_token={}",
+                device_id,
+                data.get("token"),
+                device.token,
+            )
             ack_payload = json.dumps({
                 "code": 401,
                 "type": "data_report_ack",
@@ -169,6 +210,7 @@ async def _handle_data_report(device_id: str, data: dict) -> None:
             eco2=sensor_data.get("eco2"),
             mold_risk=sensor_data.get("mold_risk"),
             gas=sensor_data.get("gas"),
+            wifi_rssi=sensor_data.get("wifi_rssi"),
             focus_mode=status_data.get("focus_mode", False),
             timestamp=datetime.fromtimestamp(data.get("timestamp", time.time()), tz=timezone.utc),
         )
@@ -181,12 +223,20 @@ async def _handle_data_report(device_id: str, data: dict) -> None:
             device.firmware_version = sensor_data.get("version")
 
         await db.commit()
+        logger.info(
+            "数据上报成功: device_id={}, temp={}, hum={}, aqi={}, eco2={}",
+            device_id,
+            sensor_data.get("temperature"),
+            sensor_data.get("humidity"),
+            sensor_data.get("aqi"),
+            sensor_data.get("eco2"),
+        )
 
     # 回复 data_report_ack（协议: 数据接收响应协议.json）
     ack_payload = json.dumps({
         "code": 200,
         "type": "data_report_ack",
-        "msg": "gogogookkk",
+        "msg": "数据接收成功",
         "timestamp": int(time.time()),
         "receive_status": True,
     })
@@ -211,6 +261,13 @@ async def _handle_control_ack(device_id: str, data: dict) -> None:
     command = data.get("command", "")
     result_status = data.get("result", "")
     value = data.get("value", "")
+    logger.info(
+        "控制结果 ACK: device_id={}, command={}, value={}, result={}",
+        device_id,
+        command,
+        value,
+        result_status,
+    )
 
     # 通过 WebSocket 推送给前端
     await ws_manager.broadcast_control_result(device_id, command, value, result_status)
