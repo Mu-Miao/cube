@@ -1,9 +1,22 @@
 <template>
   <div
     class="device-overview-card"
-    :class="{ 'device-overview-card--offline': isOffline }"
-    @click="emit('click', device)"
+    :data-device-card="device.device_id"
+    :class="{
+      'device-overview-card--offline': isOffline,
+      'device-overview-card--launching': launching,
+      'device-overview-card--muted': muted,
+    }"
+    @click="handleClick"
   >
+    <DigitalTwinPlaceholder
+      class="device-overview-card__twin"
+      :label="device.device_name"
+      :offline="isOffline"
+      size="mini"
+      :style="transitionName ? { '--twin-transition-name': transitionName } : undefined"
+    />
+
     <!-- 设备名称 -->
     <div class="device-overview-card__name">{{ device.device_name }}</div>
     <div class="device-overview-card__id">{{ device.device_id }}</div>
@@ -35,6 +48,7 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 import DeviceStatusDot from './DeviceStatusDot.vue'
+import DigitalTwinPlaceholder from '@/components/brand/DigitalTwinPlaceholder.vue'
 
 defineOptions({ name: 'DeviceOverviewCard' })
 
@@ -49,10 +63,13 @@ const props = defineProps<{
   device: DeviceInfo
   temperature: number | null
   humidity: number | null
+  launching?: boolean
+  muted?: boolean
+  transitionName?: string
 }>()
 
 const emit = defineEmits<{
-  (e: 'click', device: DeviceInfo): void
+  (e: 'click', device: DeviceInfo, rect: DOMRect): void
 }>()
 
 const isOffline = computed(() => {
@@ -70,51 +87,96 @@ const statusText = computed(() => {
   if (props.device.status === 'error') return '异常'
   return '在线'
 })
+
+function handleClick(event: MouseEvent) {
+  const target = event.currentTarget as HTMLElement
+  const twin = target.querySelector('.digital-twin') as HTMLElement | null
+  emit('click', props.device, (twin || target).getBoundingClientRect())
+}
 </script>
 
 <style scoped>
 .device-overview-card {
+  --glass-bg: linear-gradient(145deg, rgba(105, 200, 255, 0.085), rgba(5, 23, 52, 0.3));
+  --glass-border: 1px solid rgba(188, 231, 255, 0.2);
+  --glass-shadow: 0 18px 42px rgba(0, 3, 18, 0.2);
+  --glass-inner-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.3), inset 0 -1px 0 rgba(76, 115, 255, 0.12);
+  --glass-radius: 20px;
+
   position: relative;
   overflow: hidden;
-  background:
-    linear-gradient(145deg, rgba(255, 255, 255, 0.058), rgba(255, 255, 255, 0.012)),
-    var(--bg-card, rgba(15, 23, 42, 0.65));
-  border: var(--border-glass, 1px solid rgba(255, 255, 255, 0.1));
-  border-radius: var(--radius-card, var(--radius-md, 12px));
+  background: var(--glass-bg);
+  backdrop-filter: blur(24px) saturate(1.85);
+  -webkit-backdrop-filter: blur(24px) saturate(1.85);
+  border: var(--glass-border);
+  border-radius: var(--glass-radius);
   padding: 16px;
+  min-width: 218px;
   cursor: pointer;
-  box-shadow: var(--shadow-card, 0 4px 12px rgba(0, 0, 0, 0.35));
+  box-shadow: var(--glass-shadow), var(--glass-inner-shadow);
   transition:
     transform var(--transition-spring, 420ms cubic-bezier(0.2, 0.9, 0.2, 1)),
     border-color var(--transition-base, 250ms cubic-bezier(0.4, 0, 0.2, 1)),
-    box-shadow var(--transition-base, 250ms cubic-bezier(0.4, 0, 0.2, 1));
+    box-shadow var(--transition-base, 250ms cubic-bezier(0.4, 0, 0.2, 1)),
+    background var(--transition-base, 250ms cubic-bezier(0.4, 0, 0.2, 1));
 }
 
+.device-overview-card__twin {
+  float: left;
+  margin: -4px 10px 4px -4px;
+  view-transition-name: var(--twin-transition-name, none);
+  contain: layout;
+  transform-origin: 40% 36%;
+  will-change: transform, opacity;
+  transition:
+    transform 640ms cubic-bezier(0.2, 0.9, 0.18, 1),
+    opacity 360ms ease,
+    filter 360ms ease;
+  position: relative;
+  z-index: 1;
+}
+
+/* Subtle top-edge highlight */
 .device-overview-card::before {
   content: '';
   position: absolute;
   inset: 0 0 auto;
-  height: 2px;
-  background: linear-gradient(90deg, var(--color-cube-primary, #06b6d4), var(--color-cube-accent, #a3e635), transparent);
-  opacity: 0.75;
+  height: 1px;
+  background: linear-gradient(
+    90deg,
+    transparent,
+    rgba(255, 255, 255, 0.35) 20%,
+    rgba(255, 255, 255, 0.12) 80%,
+    transparent
+  );
+  opacity: 0.8;
 }
 
+/* Hover sheen — white light passing through glass */
 .device-overview-card::after {
   content: '';
   position: absolute;
   top: 0;
   bottom: 0;
-  width: 42%;
-  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.09), transparent);
-  transform: translateX(-150%) skewX(-14deg);
-  transition: transform var(--transition-slow, 400ms cubic-bezier(0.4, 0, 0.2, 1));
+  width: 50%;
+  background: linear-gradient(
+    90deg,
+    transparent,
+    rgba(255, 255, 255, 0.06),
+    transparent
+  );
+  transform: translateX(-160%) skewX(-14deg);
+  transition: transform var(--transition-slow, 500ms cubic-bezier(0.4, 0, 0.2, 1));
   pointer-events: none;
 }
 
 .device-overview-card:hover {
   transform: translateY(-5px);
-  border-color: rgba(6, 182, 212, 0.38);
-  box-shadow: var(--shadow-holo, 0 0 28px rgba(6, 182, 212, 0.12));
+  background: linear-gradient(145deg, rgba(118, 211, 255, 0.14), rgba(11, 34, 72, 0.34));
+  border-color: rgba(255, 255, 255, 0.25);
+  box-shadow:
+    0 12px 40px rgba(0, 0, 0, 0.16),
+    inset 0 1px 1px rgba(255, 255, 255, 0.2);
 }
 
 .device-overview-card:hover::after {
@@ -122,15 +184,35 @@ const statusText = computed(() => {
 }
 
 .device-overview-card--offline {
-  opacity: 0.6;
+  opacity: 0.55;
+}
+
+.device-overview-card--muted {
+  opacity: 0;
+  transform: translateY(12px) scale(0.94);
+  pointer-events: none;
+}
+
+.device-overview-card--launching {
+  z-index: 5;
+  border-color: rgba(226, 250, 255, 0.55);
+  box-shadow:
+    0 22px 70px rgba(0, 4, 18, 0.4),
+    0 0 46px rgba(34, 211, 238, 0.18),
+    inset 0 1px 0 rgba(255, 255, 255, 0.38);
+}
+
+.device-overview-card--launching .device-overview-card__twin {
+  transform: translate(36px, -8px) scale(1.32);
 }
 
 .device-overview-card__name {
   font-family: var(--font-body, 'Inter', 'Plus Jakarta Sans', sans-serif);
   font-size: 14px;
   font-weight: 700;
-  color: var(--text-primary, var(--text-main, #e8ecf4));
+  color: var(--text-primary, #e8ecf4);
   margin-bottom: 4px;
+  padding-left: 78px;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -143,6 +225,7 @@ const statusText = computed(() => {
   font-size: 10px;
   color: var(--text-disabled, #4b5563);
   margin-bottom: 10px;
+  padding-left: 78px;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -162,7 +245,7 @@ const statusText = computed(() => {
 .device-overview-card__status-text {
   font-family: var(--font-body, 'Inter', 'Plus Jakarta Sans', sans-serif);
   font-size: 12px;
-  color: var(--text-secondary, var(--text-secondary, #8b95b0));
+  color: var(--text-secondary, #8b95b0);
 }
 
 .device-overview-card__data {
@@ -179,9 +262,9 @@ const statusText = computed(() => {
   justify-content: space-between;
   gap: 12px;
   padding: 6px 8px;
-  border-radius: var(--radius-button, 6px);
-  background: rgba(255, 255, 255, 0.035);
-  border: 1px solid rgba(255, 255, 255, 0.045);
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.08);
 }
 
 .device-overview-card__data-label {
@@ -195,6 +278,21 @@ const statusText = computed(() => {
   font-family: var(--font-mono, 'JetBrains Mono', monospace);
   font-size: 14px;
   font-weight: 600;
-  color: var(--text-primary, var(--text-main, #e8ecf4));
+  color: var(--text-primary, #e8ecf4);
+}
+
+@media (max-width: 760px) {
+  .device-overview-card {
+    min-width: 200px;
+  }
+
+  .device-overview-card__twin {
+    width: 60px;
+  }
+
+  .device-overview-card__name,
+  .device-overview-card__id {
+    padding-left: 66px;
+  }
 }
 </style>

@@ -16,6 +16,27 @@ export function useWebSocket(url: string) {
   const messageHandlers = new Map<string, ((data: Record<string, unknown>) => void)[]>()
   // 是否为演示模式
   const demoMode = ref(isDemoMode())
+  let reconnectTimer: number | null = null
+  let reconnectAttempts = 0
+  let manuallyDisconnected = false
+  const MAX_RECONNECT_DELAY = 30000
+
+  function clearReconnectTimer() {
+    if (reconnectTimer !== null) {
+      window.clearTimeout(reconnectTimer)
+      reconnectTimer = null
+    }
+  }
+
+  function scheduleReconnect() {
+    if (manuallyDisconnected || demoMode.value || reconnectTimer !== null) return
+    const delay = Math.min(1000 * 2 ** reconnectAttempts, MAX_RECONNECT_DELAY)
+    reconnectAttempts += 1
+    reconnectTimer = window.setTimeout(() => {
+      reconnectTimer = null
+      connect()
+    }, delay)
+  }
 
   /**
    * 建立 WebSocket 连接
@@ -24,6 +45,9 @@ export function useWebSocket(url: string) {
    * 服务端认证通过后才会开始推送业务消息
    */
   function connect() {
+    manuallyDisconnected = false
+    clearReconnectTimer()
+
     // 演示模式：使用模拟 WebSocket 行为
     if (demoMode.value) {
       mockConnect()
@@ -41,10 +65,14 @@ export function useWebSocket(url: string) {
 
     // 真实模式：创建 WebSocket 连接
     const wsUrl = `${import.meta.env.VITE_WS_BASE_URL || 'ws://localhost:8000'}${url}`
+    if (ws.value?.readyState === WebSocket.OPEN || ws.value?.readyState === WebSocket.CONNECTING) {
+      return
+    }
     ws.value = new WebSocket(wsUrl)
 
     ws.value.onopen = () => {
       connected.value = true
+      reconnectAttempts = 0
       // 连接成功后立即发送认证消息（使用统一的嵌套格式）
       const token = localStorage.getItem('token')
       if (token) {
@@ -75,6 +103,8 @@ export function useWebSocket(url: string) {
     // 连接关闭时更新状态
     ws.value.onclose = () => {
       connected.value = false
+      ws.value = null
+      scheduleReconnect()
     }
 
     // 连接错误时打印日志
@@ -113,7 +143,11 @@ export function useWebSocket(url: string) {
       return
     }
     // 真实模式：通过真实 WebSocket 发送
-    ws.value?.send(JSON.stringify({ type, data }))
+    if (ws.value?.readyState !== WebSocket.OPEN) {
+      console.warn(`WebSocket 尚未连接，消息未发送: ${type}`)
+      return
+    }
+    ws.value.send(JSON.stringify({ type, data }))
   }
 
   /**
@@ -121,6 +155,8 @@ export function useWebSocket(url: string) {
    * 演示模式下断开模拟连接，否则关闭真实 WebSocket
    */
   function disconnect() {
+    manuallyDisconnected = true
+    clearReconnectTimer()
     // 演示模式：断开模拟连接
     if (demoMode.value) {
       mockDisconnect()
@@ -129,6 +165,8 @@ export function useWebSocket(url: string) {
     }
     // 真实模式：关闭真实 WebSocket
     ws.value?.close()
+    ws.value = null
+    connected.value = false
   }
 
   // 组件卸载时自动断开连接，防止内存泄漏

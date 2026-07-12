@@ -11,8 +11,8 @@ import { isDemoMode, mockGetDeviceList, mockBindDevice, mockGetLatestData, mockS
 const service: AxiosInstance = axios.create({
   // API 基础地址，从环境变量读取
   baseURL: import.meta.env.VITE_API_BASE_URL || '/api/v1',
-  // 请求超时时间 10 秒
-  timeout: 10000,
+  // AI 生成可能需要等待本地模型冷启动，统一给足 120 秒。
+  timeout: 120000,
 })
 
 // 请求拦截器：演示模式拦截返回模拟数据，正常模式附加 JWT Token
@@ -22,6 +22,68 @@ service.interceptors.request.use(
     if (isDemoMode()) {
       const url = config.url || ''
       const method = config.method?.toUpperCase()
+      const params = config.params as { force_llm?: boolean } | undefined
+
+      if (url.includes('/ai/') && params?.force_llm) {
+        return Promise.reject({
+          response: {
+            data: {
+              detail: '当前处于演示模式，强制 LLM 分析不会请求后端。请关闭 demo 模式后重试。',
+            },
+          },
+        })
+      }
+
+      // AI 读取接口在演示模式下返回明确的规则引擎数据。
+      if (url.includes('/ai/') && url.endsWith('/score') && method === 'GET') {
+        return Promise.reject({
+          __mock__: true,
+          response: { data: { score: 85, level: 'good', summary: '当前室内环境整体舒适，空气质量良好。' } },
+        })
+      }
+
+      if (url.includes('/ai/') && url.endsWith('/risks') && method === 'GET') {
+        return Promise.reject({
+          __mock__: true,
+          response: { data: { risks: [], highest_level: 'none' } },
+        })
+      }
+
+      if (url.includes('/ai/') && url.endsWith('/suggestions') && method === 'GET') {
+        return Promise.reject({
+          __mock__: true,
+          response: {
+            data: {
+              source: 'rule',
+              suggestions: [
+                { icon: 'wind', title: '空气质量良好', desc: '建议定时开窗，保持空气流通' },
+                { icon: 'temp', title: '温度适宜', desc: '当前温度适合工作与休息' },
+              ],
+            },
+          },
+        })
+      }
+
+      if (url.includes('/ai/') && url.endsWith('/weekly-report') && method === 'GET') {
+        const today = new Date()
+        const days = Array.from({ length: 7 }, (_, index) => {
+          const date = new Date(today)
+          date.setDate(today.getDate() - (6 - index))
+          return {
+            date: date.toISOString().slice(0, 10),
+            temperature: 24 + (index % 3) * 0.5,
+            humidity: 56 + (index % 4),
+            aqi: 42 + index * 2,
+            sample_count: 48,
+          }
+        })
+        return Promise.reject({
+          __mock__: true,
+          response: {
+            data: { days, summary: '本周环境整体稳定，各项指标处于舒适范围。', source: 'rule' },
+          },
+        })
+      }
 
       // GET /device/list → 返回模拟设备列表
       if (url.includes('/device/list') && method === 'GET') {
@@ -53,8 +115,13 @@ service.interceptors.request.use(
         return Promise.reject({ __mock__: true, response: { data: mockData } })
       }
 
-      // 其他未匹配的请求也返回空成功响应(避免演示时报错)
-      return Promise.reject({ __mock__: true, response: { data: {} } })
+      // 未实现的模拟接口必须明确报错，避免路径拼错或漏做 mock 时表现成“成功”。
+      return Promise.reject({
+        response: {
+          status: 501,
+          data: { detail: `演示模式暂未实现该接口：${method || 'UNKNOWN'} ${url}` },
+        },
+      })
     }
 
     // === 正常模式：附加 JWT Token ===

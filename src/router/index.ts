@@ -5,6 +5,7 @@
 
 import { createRouter, createWebHistory } from 'vue-router'
 import { useAuthStore } from '@/store/auth'
+import { isDemoMode } from '@/utils/demoMode'
 
 const router = createRouter({
   // 使用 HTML5 History 模式（无 # 号的路由）
@@ -83,8 +84,8 @@ const router = createRouter({
 // 全局导航守卫：在路由跳转前执行
 router.beforeEach((to) => {
   const authStore = useAuthStore()
-  // 支持 demo 模式：?demo=true 跳过登录直接进入
-  const isDemo = new URLSearchParams(window.location.search).get('demo') === 'true'
+  // 与 API、WebSocket 共用同一套演示模式判断，避免状态不一致。
+  const isDemo = isDemoMode()
 
   // 需要认证但用户未登录：重定向到登录页
   if (to.meta.requiresAuth && !authStore.isLoggedIn && !isDemo) {

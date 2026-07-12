@@ -70,7 +70,12 @@
             </div>
           </div>
         </div>
-        <p class="ai-disclaimer">AI 生成，仅供参考</p>
+        <div class="suggest-footer">
+          <span class="ai-disclaimer">仅供参考</span>
+          <span class="source-badge" :class="suggestionSource === 'llm' ? 'badge-llm' : 'badge-rule'">
+            {{ suggestionSource === 'llm' ? '🤖 LLM 生成' : '⚙️ 规则引擎' }}
+          </span>
+        </div>
       </div>
     </section>
 
@@ -82,7 +87,24 @@
           导出 PDF
         </el-button>
       </div>
+      <p v-if="weeklySummary" class="weekly-summary">{{ weeklySummary }}</p>
       <div ref="weeklyChartRef" class="weekly-chart" />
+    </section>
+
+    <!-- AI 分析按钮 -->
+    <section class="analyze-section animate-fade-up-blur">
+      <el-button
+        type="primary"
+        size="large"
+        :loading="analyzing"
+        class="analyze-btn"
+        @click="handleAnalyze"
+      >
+        {{ analyzing ? 'AI 分析中...' : '🔍 开始 AI 分析' }}
+      </el-button>
+      <p v-if="!deviceStore.selectedDeviceId" class="analyze-hint">
+        未选中设备，点击后将自动使用第一个设备
+      </p>
     </section>
   </div>
 </template>
@@ -91,9 +113,9 @@
 import { ref, computed, onMounted, onBeforeUnmount, watch } from 'vue'
 import * as echarts from 'echarts'
 import { useDeviceStore } from '@/store/device'
-import { getLatestData } from '@/api/device'
+import { getLatestData, getDeviceList } from '@/api/device'
 import { getAiSuggestions, getEnvironmentScore, getRiskWarnings, getWeeklyReport } from '@/api/ai'
-import { showInfoToast } from '@/utils/alert'
+import { showErrorToast, showInfoToast, showSuccessToast, showWarningToast } from '@/utils/alert'
 
 defineOptions({ name: 'AiAnalysisPage' })
 
@@ -149,32 +171,77 @@ const aiIconMap: Record<string, string> = {
   light: '\uD83D\uDCA1',
   wind: '\uD83C\uDF2C\uFE0F',
   water: '\uD83D\uDCA7',
+  humidity: '\uD83D\uDCA7',
   temp: '\uD83C\uDF21',
+  temperature: '\uD83C\uDF21',
+  air: '\uD83C\uDF2C\uFE0F',
+  aqi: '\uD83C\uDF2C\uFE0F',
+  tvoc: '\uD83C\uDF2C\uFE0F',
+  eco2: '\uD83C\uDF2C\uFE0F',
+  gas: '\u26A0',
+  mold: '\u26A0',
+  mold_risk: '\u26A0',
   ok: '\u2713',
+}
+
+const suggestionSource = ref<'llm' | 'rule' | ''>('')
+const weeklySummary = ref('')
+const analyzing = ref(false)
+
+// ---------- 手动触发 AI 分析 ----------
+async function handleAnalyze() {
+  if (analyzing.value) return
+  if (!deviceStore.selectedDeviceId) {
+    await ensureDeviceSelected()
+  }
+  if (!deviceStore.selectedDeviceId) {
+    showWarningToast('请先绑定或选择一个设备')
+    return
+  }
+  analyzing.value = true
+  try {
+    const results = await Promise.all([fetchSensorData(), fetchAiAnalysis(true), fetchRisksAndWeeklyReport(true)])
+    if (results.every(Boolean)) {
+      showSuccessToast('LLM 分析完成')
+    } else {
+      showWarningToast('LLM 未返回结果，当前展示规则分析或兜底数据')
+    }
+  } catch (err) {
+    const message = getApiErrorMessage(err, 'AI 分析失败，请检查后端服务、LLM 配置或登录状态')
+    if (!message.includes('当前处于演示模式')) {
+      console.error('AI 分析失败', err)
+    }
+    showErrorToast(message)
+  } finally {
+    analyzing.value = false
+  }
 }
 
 // ---------- 尝试从 store 获取传感器数据 ----------
 async function fetchSensorData() {
   const deviceId = deviceStore.selectedDeviceId
-  if (!deviceId) return
+  if (!deviceId) return false
   try {
     const data = await getLatestData(deviceId)
     if (data) {
       moldRisk.value = data.mold_risk ?? 0
       gasValue.value = data.gas ?? 0
     }
-  } catch {
+    return true
+  } catch (err) {
+    console.error('获取传感器数据失败', err)
     // 使用模拟数据兜底
+    return false
   }
 }
 
-async function fetchAiAnalysis() {
+async function fetchAiAnalysis(forceLlm = false) {
   const deviceId = deviceStore.selectedDeviceId
-  if (!deviceId) return
+  if (!deviceId) return false
   try {
     const [scoreData, suggestionData] = await Promise.all([
       getEnvironmentScore(deviceId),
-      getAiSuggestions(deviceId),
+      getAiSuggestions(deviceId, forceLlm),
     ])
     if (typeof scoreData.score === 'number') {
       environmentScore.value = scoreData.score
@@ -187,19 +254,24 @@ async function fetchAiAnalysis() {
         title: item.title,
         desc: item.desc,
       }))
+      suggestionSource.value = suggestionData.source || 'rule'
     }
-  } catch {
+    return forceLlm ? suggestionData.source === 'llm' : true
+  } catch (err) {
+    if (forceLlm) throw err
+    console.error('获取 AI 建议失败', err)
     // 保留本地模拟建议作为兜底
+    return false
   }
 }
 
-async function fetchRisksAndWeeklyReport() {
+async function fetchRisksAndWeeklyReport(forceLlm = false) {
   const deviceId = deviceStore.selectedDeviceId
-  if (!deviceId) return
+  if (!deviceId) return false
   try {
     const [riskData, weeklyData] = await Promise.all([
       getRiskWarnings(deviceId),
-      getWeeklyReport(deviceId),
+      getWeeklyReport(deviceId, forceLlm),
     ])
     riskItems.value = riskData.risks || []
     if (weeklyData.days?.length) {
@@ -209,9 +281,19 @@ async function fetchRisksAndWeeklyReport() {
       const aqi = weeklyData.days.map((item) => item.aqi ?? 0)
       updateWeeklyChart(labels, temperature, humidity, aqi)
     }
-  } catch {
+    weeklySummary.value = weeklyData.summary || ''
+    return forceLlm ? weeklyData.source === 'llm' : true
+  } catch (err) {
+    if (forceLlm) throw err
+    console.error('获取风险和周报失败', err)
     // 周报和风险接口失败时保留页面兜底数据
+    return false
   }
+}
+
+function getApiErrorMessage(err: unknown, fallback: string) {
+  const error = err as { response?: { data?: { detail?: string; message?: string } }; message?: string }
+  return error.response?.data?.detail || error.response?.data?.message || error.message || fallback
 }
 
 // ---------- 环形进度图（ECharts gauge） ----------
@@ -429,9 +511,25 @@ function handleResize() {
 }
 
 // ---------- 生命周期 ----------
-onMounted(() => {
+async function ensureDeviceSelected() {
+  if (deviceStore.selectedDeviceId) return
+  try {
+    const list = await getDeviceList()
+    if (list?.length) {
+      const firstDevice = list[0]
+      if (firstDevice) {
+        deviceStore.selectDevice(firstDevice.device_id)
+      }
+    }
+  } catch {
+    // 拉取失败时保持 selectedDeviceId 为 null
+  }
+}
+
+onMounted(async () => {
   initGaugeChart()
   initWeeklyChart()
+  await ensureDeviceSelected()
   fetchSensorData()
   fetchAiAnalysis()
   fetchRisksAndWeeklyReport()
@@ -453,36 +551,54 @@ watch(() => deviceStore.selectedDeviceId, () => {
 </script>
 
 <style scoped>
+/* ---- Liquid Glass Tokens ---- */
 .ai-analysis-page {
+  --glass-bg: linear-gradient(145deg, rgba(102, 198, 255, 0.075), rgba(5, 22, 49, 0.31));
+  --glass-border: 1px solid rgba(255, 255, 255, 0.18);
+  --glass-shadow: 0 8px 32px rgba(0, 0, 0, 0.12);
+  --glass-inner-shadow: inset 0 1px 1px rgba(255, 255, 255, 0.15);
+  --glass-radius: 20px;
+  --glass-blur: blur(18px);
+  --glass-saturation: saturate(1.6);
+
   padding: 0;
   display: flex;
   flex-direction: column;
   gap: var(--spacing-card);
 }
 
+/* ---- Shared glass surface ---- */
 .section {
   position: relative;
   overflow: hidden;
-  background:
-    linear-gradient(145deg, rgba(255, 255, 255, 0.058), rgba(255, 255, 255, 0.012)),
-    var(--bg-card);
-  backdrop-filter: blur(16px) saturate(1.3);
-  -webkit-backdrop-filter: blur(16px) saturate(1.3);
-  border: var(--border-glass);
-  border-radius: var(--radius-card);
+  background: var(--glass-bg);
+  backdrop-filter: var(--glass-blur) var(--glass-saturation);
+  -webkit-backdrop-filter: var(--glass-blur) var(--glass-saturation);
+  border: var(--glass-border);
+  border-radius: var(--glass-radius);
   padding: var(--spacing-card);
-  box-shadow: var(--shadow-card);
+  box-shadow: var(--glass-shadow), var(--glass-inner-shadow);
+  transition:
+    background var(--transition-base),
+    box-shadow var(--transition-base);
 }
 
+/* Soft white top-edge highlight arc */
 .section::before {
   content: '';
   position: absolute;
-  inset: 0 0 auto;
-  height: 2px;
-  background: linear-gradient(90deg, var(--color-cube-violet), var(--color-cube-primary), var(--color-cube-accent));
-  background-size: 200% 100%;
-  opacity: 0.7;
-  animation: border-flow 5s linear infinite;
+  top: 0;
+  left: 10%;
+  right: 10%;
+  height: 1px;
+  background: linear-gradient(
+    90deg,
+    transparent,
+    rgba(255, 255, 255, 0.35),
+    transparent
+  );
+  opacity: 0.8;
+  animation: none;
 }
 
 .section-title {
@@ -509,6 +625,10 @@ watch(() => deviceStore.selectedDeviceId, () => {
 /* ---- 环境综合评分 ---- */
 .score-section {
   text-align: center;
+}
+
+.score-section:hover {
+  background: rgba(255, 255, 255, 0.095);
 }
 
 .score-content {
@@ -551,15 +671,37 @@ watch(() => deviceStore.selectedDeviceId, () => {
 .panel {
   position: relative;
   overflow: hidden;
-  background:
-    linear-gradient(145deg, rgba(255, 255, 255, 0.052), rgba(255, 255, 255, 0.012)),
-    var(--bg-card);
-  backdrop-filter: blur(16px) saturate(1.3);
-  -webkit-backdrop-filter: blur(16px) saturate(1.3);
-  border: var(--border-glass);
-  border-radius: var(--radius-card);
+  background: var(--glass-bg);
+  backdrop-filter: var(--glass-blur) var(--glass-saturation);
+  -webkit-backdrop-filter: var(--glass-blur) var(--glass-saturation);
+  border: var(--glass-border);
+  border-radius: var(--glass-radius);
   padding: var(--spacing-card);
-  box-shadow: var(--shadow-card);
+  box-shadow: var(--glass-shadow), var(--glass-inner-shadow);
+  transition:
+    background var(--transition-base),
+    box-shadow var(--transition-base);
+}
+
+/* Soft white top-edge highlight on panels */
+.panel::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 10%;
+  right: 10%;
+  height: 1px;
+  background: linear-gradient(
+    90deg,
+    transparent,
+    rgba(255, 255, 255, 0.35),
+    transparent
+  );
+  opacity: 0.8;
+}
+
+.panel:hover {
+  background: rgba(255, 255, 255, 0.095);
 }
 
 /* ---- 风险预警 ---- */
@@ -574,8 +716,9 @@ watch(() => deviceStore.selectedDeviceId, () => {
   align-items: center;
   gap: var(--spacing-element);
   padding: 12px 16px;
-  border-radius: var(--radius-button);
-  border: 1px solid rgba(255, 255, 255, 0.055);
+  border-radius: 14px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  background: rgba(255, 255, 255, 0.04);
   transition:
     transform var(--transition-base),
     background var(--transition-fast),
@@ -584,20 +727,25 @@ watch(() => deviceStore.selectedDeviceId, () => {
 
 .risk-item:hover {
   transform: translateX(3px);
-  border-color: rgba(6, 182, 212, 0.24);
+  background: rgba(255, 255, 255, 0.08);
+  border-color: rgba(255, 255, 255, 0.22);
 }
 
 .risk-item.risk-low {
-  background: var(--color-success-dim);
+  background: rgba(16, 185, 129, 0.1);
+  border-color: rgba(16, 185, 129, 0.2);
 }
 .risk-item.risk-medium {
-  background: var(--color-warning-dim);
+  background: rgba(245, 158, 11, 0.1);
+  border-color: rgba(245, 158, 11, 0.2);
 }
 .risk-item.risk-high {
   background: rgba(239, 68, 68, 0.12);
+  border-color: rgba(239, 68, 68, 0.22);
 }
 .risk-item.risk-critical {
   background: rgba(239, 68, 68, 0.18);
+  border-color: rgba(239, 68, 68, 0.3);
 }
 
 .risk-icon {
@@ -647,9 +795,9 @@ watch(() => deviceStore.selectedDeviceId, () => {
   align-items: flex-start;
   gap: var(--spacing-element);
   padding: 12px 16px;
-  background: rgba(255, 255, 255, 0.035);
-  border: 1px solid rgba(255, 255, 255, 0.055);
-  border-radius: var(--radius-button);
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 14px;
   transition:
     transform var(--transition-base),
     background var(--transition-fast),
@@ -658,8 +806,8 @@ watch(() => deviceStore.selectedDeviceId, () => {
 
 .suggest-item:hover {
   transform: translateX(3px);
-  background: rgba(139, 92, 246, 0.08);
-  border-color: rgba(139, 92, 246, 0.22);
+  background: rgba(255, 255, 255, 0.09);
+  border-color: rgba(255, 255, 255, 0.24);
 }
 
 .suggest-icon {
@@ -687,17 +835,49 @@ watch(() => deviceStore.selectedDeviceId, () => {
   line-height: 1.5;
 }
 
-.ai-disclaimer {
+.suggest-footer {
   margin-top: 12px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.ai-disclaimer {
   font-size: 11px;
   color: var(--text-disabled);
-  text-align: right;
   font-style: italic;
+}
+
+.source-badge {
+  font-size: 11px;
+  font-weight: 600;
+  padding: 3px 10px;
+  border-radius: 999px;
+  letter-spacing: 0.3px;
+  white-space: nowrap;
+  backdrop-filter: blur(8px);
+}
+
+.badge-llm {
+  background: rgba(139, 92, 246, 0.15);
+  color: #a78bfa;
+  border: 1px solid rgba(139, 92, 246, 0.3);
+}
+
+.badge-rule {
+  background: rgba(156, 163, 175, 0.1);
+  color: var(--text-secondary);
+  border: 1px solid rgba(156, 163, 175, 0.2);
 }
 
 /* ---- 本周环境周报 ---- */
 .report-section {
   padding-bottom: var(--spacing-card);
+}
+
+.report-section:hover {
+  background: rgba(255, 255, 255, 0.095);
 }
 
 .report-header {
@@ -718,6 +898,54 @@ watch(() => deviceStore.selectedDeviceId, () => {
 .weekly-chart {
   width: 100%;
   height: 300px;
+}
+
+.weekly-summary {
+  font-size: 13px;
+  color: var(--text-secondary);
+  line-height: 1.7;
+  padding: 12px 16px;
+  margin-bottom: var(--spacing-module);
+  background: rgba(255, 255, 255, 0.05);
+  border-left: 3px solid rgba(139, 92, 246, 0.5);
+  border-radius: 14px;
+  backdrop-filter: blur(12px);
+}
+
+/* ---- AI 分析按钮 ---- */
+.analyze-section {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  padding: 24px;
+  background: var(--glass-bg);
+  backdrop-filter: var(--glass-blur) var(--glass-saturation);
+  -webkit-backdrop-filter: var(--glass-blur) var(--glass-saturation);
+  border: var(--glass-border);
+  border-radius: var(--glass-radius);
+  box-shadow: var(--glass-shadow), var(--glass-inner-shadow);
+}
+
+.analyze-btn {
+  font-size: 15px;
+  font-weight: 600;
+  padding: 12px 40px;
+  height: auto;
+  background: linear-gradient(135deg, var(--color-cube-violet), var(--color-cube-primary));
+  border: none;
+  border-radius: 14px;
+  box-shadow: 0 4px 20px rgba(139, 92, 246, 0.35);
+}
+
+.analyze-btn:hover:not(:disabled) {
+  transform: translateY(-1px);
+  box-shadow: 0 6px 28px rgba(139, 92, 246, 0.45);
+}
+
+.analyze-hint {
+  font-size: 12px;
+  color: var(--text-disabled);
 }
 
 /* ---- 响应式 ---- */

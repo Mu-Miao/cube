@@ -39,7 +39,10 @@
         v-for="device in filteredDevices"
         :key="device.device_id"
         class="device-card"
-        :class="{ 'device-card--offline': device.status === 'offline' }"
+        :class="{
+          'device-card--offline': device.status === 'offline',
+          'device-card--selected': deviceStore.selectedDeviceId === device.device_id,
+        }"
       >
         <!-- 设备名称 -->
         <div class="device-card__name">{{ device.device_name }}</div>
@@ -71,6 +74,13 @@
 
         <!-- 操作按钮 -->
         <div class="device-card__actions">
+          <el-button
+            size="small"
+            :type="deviceStore.selectedDeviceId === device.device_id ? 'success' : 'primary'"
+            @click="selectDevice(device.device_id)"
+          >
+            {{ deviceStore.selectedDeviceId === device.device_id ? '✓ 已选中' : '选中' }}
+          </el-button>
           <el-button size="small" @click="goToControl(device.device_id)">
             查看详情
           </el-button>
@@ -262,6 +272,14 @@ async function fetchDevices() {
 }
 
 /**
+ * 选中设备（供 AI 分析等其他页面使用）
+ */
+function selectDevice(deviceId: string) {
+  deviceStore.selectDevice(deviceId)
+  ElMessage.success('设备已选中，可前往 AI 分析页查看结果')
+}
+
+/**
  * 跳转到控制面板页
  */
 function goToControl(deviceId: string) {
@@ -341,7 +359,22 @@ onMounted(() => {
 </script>
 
 <style scoped>
+/* ========== Liquid Glass — CSS Custom Properties ========== */
 .devices-page {
+  --glass-bg: linear-gradient(145deg, rgba(102, 198, 255, 0.075), rgba(5, 22, 49, 0.31));
+  --glass-border: 1px solid rgba(255, 255, 255, 0.18);
+  --glass-shadow: 0 8px 32px rgba(0, 0, 0, 0.12);
+  --glass-inner-shadow: inset 0 1px 1px rgba(255, 255, 255, 0.15);
+  --glass-radius: 20px;
+  --glass-radius-sm: 14px;
+  --glass-blur: blur(18px);
+  --glass-saturation: saturate(1.6);
+  --color-cube-primary: #06B6D4;
+  --color-cube-accent: #A3E635;
+  --text-primary: rgba(255, 255, 255, 0.92);
+  --text-secondary: rgba(255, 255, 255, 0.60);
+  --text-disabled: rgba(255, 255, 255, 0.30);
+
   display: flex;
   flex-direction: column;
   gap: 22px;
@@ -363,7 +396,6 @@ onMounted(() => {
   align-items: center;
   gap: 10px;
 }
-
 .devices-title::before {
   content: '';
   width: 4px;
@@ -373,20 +405,18 @@ onMounted(() => {
   box-shadow: 0 0 16px rgba(6, 182, 212, 0.45);
 }
 
-/* === 搜索与筛选栏 === */
+/* === 搜索与筛选栏 — Glass Toolbar === */
 .devices-toolbar {
   display: flex;
   align-items: center;
   gap: 12px;
   padding: 12px;
-  border: var(--border-glass);
-  border-radius: var(--radius-card);
-  background:
-    linear-gradient(145deg, rgba(255, 255, 255, 0.05), rgba(255, 255, 255, 0.012)),
-    rgba(12, 18, 25, 0.58);
-  box-shadow: var(--shadow-card);
-  backdrop-filter: blur(16px) saturate(1.18);
-  -webkit-backdrop-filter: blur(16px) saturate(1.18);
+  border: var(--glass-border);
+  border-radius: var(--glass-radius);
+  background: var(--glass-bg);
+  box-shadow: var(--glass-shadow), var(--glass-inner-shadow);
+  backdrop-filter: var(--glass-blur) var(--glass-saturation);
+  -webkit-backdrop-filter: var(--glass-blur) var(--glass-saturation);
 }
 .devices-search {
   max-width: 320px;
@@ -406,59 +436,74 @@ onMounted(() => {
   min-height: 200px;
 }
 
-/* === 设备卡片 === */
+/* === 设备卡片 — Glass Cards === */
 .device-card {
   position: relative;
   overflow: hidden;
-  background:
-    linear-gradient(145deg, rgba(255, 255, 255, 0.058), rgba(255, 255, 255, 0.012)),
-    var(--bg-card);
-  backdrop-filter: blur(12px);
-  -webkit-backdrop-filter: blur(12px);
-  border: var(--border-glass);
-  border-radius: var(--radius-card);
+  background: var(--glass-bg);
+  backdrop-filter: var(--glass-blur) var(--glass-saturation);
+  -webkit-backdrop-filter: var(--glass-blur) var(--glass-saturation);
+  border: var(--glass-border);
+  border-radius: var(--glass-radius);
   padding: 20px;
   display: flex;
   flex-direction: column;
   gap: 10px;
-  box-shadow: var(--shadow-card);
+  box-shadow: var(--glass-shadow), var(--glass-inner-shadow);
   transition:
     transform var(--transition-spring),
     border-color var(--transition-base),
     box-shadow var(--transition-base),
+    background var(--transition-base),
     opacity var(--transition-base);
   animation: fade-up-blur 0.5s cubic-bezier(0.16, 1, 0.3, 1) both;
 }
+/* Top edge highlight — subtle white gradient line */
 .device-card::before {
   content: '';
   position: absolute;
   inset: 0 0 auto;
-  height: 2px;
-  background: linear-gradient(90deg, var(--color-cube-primary), var(--color-cube-accent), transparent);
-  opacity: 0.72;
+  height: 1px;
+  background: linear-gradient(
+    90deg,
+    rgba(255, 255, 255, 0.40),
+    rgba(255, 255, 255, 0.12),
+    transparent
+  );
 }
+/* Remove heavy pattern overlay */
 .device-card::after {
-  content: '';
-  position: absolute;
-  top: -40%;
-  right: -38%;
-  width: 72%;
-  height: 180%;
-  background:
-    repeating-linear-gradient(90deg, rgba(255, 255, 255, 0.045) 0 1px, transparent 1px 14px);
-  transform: rotate(16deg);
-  opacity: 0.12;
-  pointer-events: none;
+  display: none;
 }
 .device-card:hover {
-  border-color: rgba(6, 182, 212, 0.36);
-  box-shadow: var(--shadow-holo);
+  background: rgba(255, 255, 255, 0.12);
+  border-color: rgba(255, 255, 255, 0.28);
+  box-shadow:
+    0 12px 40px rgba(0, 0, 0, 0.18),
+    inset 0 1px 1px rgba(255, 255, 255, 0.20);
   transform: translateY(-5px);
 }
 
 /* 离线设备降低对比度 */
 .device-card--offline {
   opacity: 0.6;
+}
+
+/* 选中的设备高亮 — glass with accent border */
+.device-card--selected {
+  border-color: rgba(16, 185, 129, 0.45);
+  box-shadow:
+    0 0 0 1px rgba(16, 185, 129, 0.25),
+    var(--glass-shadow),
+    var(--glass-inner-shadow);
+}
+.device-card--selected::before {
+  background: linear-gradient(
+    90deg,
+    rgba(16, 185, 129, 0.50),
+    rgba(255, 255, 255, 0.15),
+    transparent
+  );
 }
 
 /* 设备名称 */
@@ -502,8 +547,8 @@ onMounted(() => {
   font-family: var(--font-mono);
   padding: 3px 8px;
   border-radius: var(--radius-full);
-  background: rgba(255, 255, 255, 0.045);
-  border: 1px solid rgba(255, 255, 255, 0.055);
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.12);
 }
 
 /* 固件版本 */
@@ -531,7 +576,7 @@ onMounted(() => {
   z-index: 1;
 }
 
-/* === 空状态 === */
+/* === 空状态 — Glass Empty === */
 .devices-empty {
   grid-column: 1 / -1;
   display: flex;
@@ -540,9 +585,11 @@ onMounted(() => {
   justify-content: center;
   padding: 60px 20px;
   color: var(--text-disabled);
-  border: 1px dashed rgba(255, 255, 255, 0.08);
-  border-radius: var(--radius-card);
-  background: rgba(255, 255, 255, 0.025);
+  border: 1px dashed rgba(255, 255, 255, 0.15);
+  border-radius: var(--glass-radius);
+  background: rgba(255, 255, 255, 0.04);
+  backdrop-filter: blur(12px) saturate(1.4);
+  -webkit-backdrop-filter: blur(12px) saturate(1.4);
 }
 .devices-empty__icon {
   margin-bottom: 16px;
@@ -558,7 +605,7 @@ onMounted(() => {
   color: var(--text-disabled);
 }
 
-/* === 解绑警告 === */
+/* === 解绑警告 — Glass Warning === */
 .unbind-warning {
   display: flex;
   align-items: center;
@@ -571,27 +618,30 @@ onMounted(() => {
   font-size: 13px;
   color: var(--text-secondary);
   padding: 10px 12px;
-  background: rgba(255, 255, 255, 0.045);
-  border: 1px solid rgba(255, 255, 255, 0.055);
-  border-radius: var(--radius-button);
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: var(--glass-radius-sm);
   font-family: var(--font-mono);
 }
 
-/* === Element Plus 覆盖 === */
+/* === Element Plus 覆盖 — Glass Inputs === */
 .devices-toolbar :deep(.el-input__wrapper),
 .devices-toolbar :deep(.el-select .el-input__wrapper) {
-  background: rgba(9, 13, 18, 0.68);
-  border: var(--border-default);
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.14);
   box-shadow: none;
 }
 .devices-toolbar :deep(.el-input__wrapper:hover),
 .devices-toolbar :deep(.el-select .el-input__wrapper:hover) {
-  border-color: var(--border-hover);
+  background: rgba(255, 255, 255, 0.10);
+  border-color: rgba(255, 255, 255, 0.24);
 }
 .devices-toolbar :deep(.el-input__wrapper.is-focus),
 .devices-toolbar :deep(.el-select .el-input__wrapper.is-focus) {
-  border-color: var(--color-cube-primary);
-  box-shadow: 0 0 0 1px rgba(6, 182, 212, 0.2), 0 0 18px rgba(6, 182, 212, 0.12);
+  border-color: rgba(255, 255, 255, 0.35);
+  box-shadow:
+    0 0 0 1px rgba(255, 255, 255, 0.10),
+    0 0 18px rgba(255, 255, 255, 0.06);
 }
 .devices-toolbar :deep(.el-input__inner) {
   color: var(--text-primary);

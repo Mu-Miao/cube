@@ -142,50 +142,72 @@ const areaPoints = computed(() => {
 
 <style scoped>
 .sensor-card {
+  --glass-bg: linear-gradient(145deg, rgba(104, 199, 255, 0.08), rgba(5, 22, 48, 0.28));
+  --glass-border: 1px solid rgba(188, 231, 255, 0.18);
+  --glass-shadow: 0 18px 42px rgba(0, 3, 18, 0.19);
+  --glass-inner-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.28), inset 0 -1px 0 rgba(76, 115, 255, 0.1);
+  --glass-radius: 20px;
+
   position: relative;
   overflow: hidden;
-  background:
-    linear-gradient(145deg, rgba(255, 255, 255, 0.06), rgba(255, 255, 255, 0.012)),
-    var(--bg-card, rgba(15, 23, 42, 0.65));
-  border: var(--border-glass, 1px solid rgba(255, 255, 255, 0.1));
-  border-radius: var(--radius-card, var(--radius-md, 12px));
-  box-shadow: var(--shadow-card, var(--shadow-md, 0 4px 12px rgba(0, 0, 0, 0.35)));
+  background: var(--glass-bg);
+  backdrop-filter: blur(24px) saturate(1.85);
+  -webkit-backdrop-filter: blur(24px) saturate(1.85);
+  border: var(--glass-border);
+  border-radius: var(--glass-radius);
+  box-shadow: var(--glass-shadow), var(--glass-inner-shadow);
   padding: 18px;
   transition:
     transform var(--transition-spring, 420ms cubic-bezier(0.2, 0.9, 0.2, 1)),
     border-color var(--transition-base, 250ms cubic-bezier(0.4, 0, 0.2, 1)),
-    box-shadow var(--transition-base, 250ms cubic-bezier(0.4, 0, 0.2, 1));
+    box-shadow var(--transition-base, 250ms cubic-bezier(0.4, 0, 0.2, 1)),
+    background var(--transition-base, 250ms cubic-bezier(0.4, 0, 0.2, 1));
   animation: fade-up-blur 0.5s cubic-bezier(0.16, 1, 0.3, 1) both;
   cursor: default;
 }
 
+/* Top edge highlight — subtle white gradient line */
 .sensor-card::before {
   content: '';
   position: absolute;
   inset: 0 0 auto;
-  height: 2px;
-  background: linear-gradient(90deg, var(--sensor-color), transparent 76%);
-  opacity: 0.9;
+  height: 1px;
+  background: linear-gradient(
+    90deg,
+    transparent,
+    rgba(255, 255, 255, 0.35) 20%,
+    rgba(255, 255, 255, 0.12) 80%,
+    transparent
+  );
+  opacity: 0.8;
 }
 
+/* Soft color glow — sensor color tinting the glass */
 .sensor-card::after {
   content: '';
   position: absolute;
-  inset: auto -18% -44% 46%;
-  height: 112px;
-  background: linear-gradient(135deg, transparent, color-mix(in srgb, var(--sensor-color) 20%, transparent), transparent);
-  transform: rotate(-12deg);
-  opacity: 0.55;
+  inset: auto -20% -50% 40%;
+  height: 120px;
+  background: radial-gradient(
+    ellipse at center,
+    color-mix(in srgb, var(--sensor-color) 12%, transparent),
+    transparent 70%
+  );
   pointer-events: none;
+  opacity: 0.7;
 }
 
 .sensor-card:hover {
   transform: translateY(-5px);
-  border-color: color-mix(in srgb, var(--sensor-color) 36%, rgba(255, 255, 255, 0.12));
-  box-shadow: 0 0 28px color-mix(in srgb, var(--sensor-color) 18%, transparent), var(--shadow-elevated, 0 10px 15px rgba(0, 0, 0, 0.3));
+  background: linear-gradient(145deg, rgba(121, 210, 255, 0.13), rgba(10, 31, 66, 0.32));
+  border-color: rgba(255, 255, 255, 0.25);
+  box-shadow:
+    0 12px 40px rgba(0, 0, 0, 0.16),
+    inset 0 1px 1px rgba(255, 255, 255, 0.2),
+    0 0 20px color-mix(in srgb, var(--sensor-color) 10%, transparent);
 }
 
-/* 头部 */
+/* Header */
 .sensor-card__header {
   display: flex;
   align-items: center;
@@ -204,13 +226,13 @@ const areaPoints = computed(() => {
 .sensor-card__icon-bg {
   width: 32px;
   height: 32px;
-  border-radius: 8px;
+  border-radius: 10px;
   display: flex;
   align-items: center;
   justify-content: center;
   flex-shrink: 0;
-  border: 1px solid color-mix(in srgb, var(--sensor-color) 24%, transparent);
-  box-shadow: inset 0 0 16px color-mix(in srgb, var(--sensor-color) 10%, transparent);
+  border: 1px solid color-mix(in srgb, var(--sensor-color) 20%, rgba(255, 255, 255, 0.1));
+  box-shadow: inset 0 0 12px color-mix(in srgb, var(--sensor-color) 8%, transparent);
 }
 
 .sensor-card__icon {
@@ -222,10 +244,10 @@ const areaPoints = computed(() => {
   font-family: var(--font-body, 'Inter', 'Plus Jakarta Sans', sans-serif);
   font-size: 14px;
   font-weight: 500;
-  color: var(--text-secondary, var(--text-secondary, #8b95b0));
+  color: var(--text-secondary, #8b95b0);
 }
 
-/* 状态标签 */
+/* Status badge */
 .sensor-card__status {
   font-family: var(--font-body, 'Inter', 'Plus Jakarta Sans', sans-serif);
   font-size: 12px;
@@ -233,26 +255,26 @@ const areaPoints = computed(() => {
   text-transform: uppercase;
   letter-spacing: 0.5px;
   padding: 2px 8px;
-  border-radius: var(--radius-xs, 4px);
-  border: 1px solid rgba(255, 255, 255, 0.055);
+  border-radius: 14px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
 }
 
 .sensor-card__status--normal {
-  color: var(--color-success, var(--status-online, #10b981));
-  background: rgba(16, 185, 129, 0.12);
+  color: var(--color-success, #10b981);
+  background: rgba(16, 185, 129, 0.1);
 }
 
 .sensor-card__status--warning {
-  color: var(--color-warning, var(--status-warn, #f59e0b));
-  background: rgba(245, 158, 11, 0.12);
+  color: var(--color-warning, #f59e0b);
+  background: rgba(245, 158, 11, 0.1);
 }
 
 .sensor-card__status--danger {
-  color: var(--color-danger, var(--status-danger, #ef4444));
-  background: rgba(239, 68, 68, 0.12);
+  color: var(--color-danger, #ef4444);
+  background: rgba(239, 68, 68, 0.1);
 }
 
-/* 数值区域 */
+/* Value area */
 .sensor-card__value-area {
   display: flex;
   align-items: baseline;
@@ -266,25 +288,25 @@ const areaPoints = computed(() => {
   font-family: var(--font-mono, 'JetBrains Mono', monospace);
   font-size: 36px;
   font-weight: 500;
-  color: var(--text-primary, var(--text-main, #e8ecf4));
+  color: var(--text-primary, #e8ecf4);
   line-height: 1.1;
-  text-shadow: 0 0 18px color-mix(in srgb, var(--sensor-color) 18%, transparent);
+  text-shadow: 0 0 18px color-mix(in srgb, var(--sensor-color) 14%, transparent);
 }
 
 .sensor-card__unit {
   font-family: var(--font-body, 'Inter', 'Plus Jakarta Sans', sans-serif);
   font-size: 14px;
-  color: var(--text-secondary, var(--text-secondary, #8b95b0));
+  color: var(--text-secondary, #8b95b0);
 }
 
-/* 迷你趋势线 */
+/* Mini trend line */
 .sensor-card__trend {
   height: 32px;
   width: 100%;
   position: relative;
   z-index: 1;
   padding-top: 4px;
-  border-top: 1px solid rgba(255, 255, 255, 0.055);
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
 }
 
 .sensor-card__trend-svg {
@@ -293,7 +315,7 @@ const areaPoints = computed(() => {
   display: block;
 }
 
-/* 进场动画 */
+/* Entry animation */
 @keyframes fade-up-blur {
   from {
     opacity: 0;

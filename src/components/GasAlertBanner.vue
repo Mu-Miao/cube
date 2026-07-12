@@ -1,17 +1,19 @@
 <template>
-  <Transition name="alert-slide-down">
-    <div v-if="visible" class="gas-alert-banner">
-      <div class="gas-alert-banner__content">
-        <span class="gas-alert-banner__icon">&#9888;&#65039;</span>
-        <span class="gas-alert-banner__text">
-          检测到燃气泄漏！设备：{{ deviceName }}
-        </span>
-        <button class="gas-alert-banner__btn" @click="handleViewDetail">
-          查看详情
-        </button>
+  <Teleport to="body">
+    <Transition name="alert-slide-down">
+      <div v-if="visible" class="gas-alert-banner">
+        <div class="gas-alert-banner__content">
+          <span class="gas-alert-banner__icon">&#9888;&#65039;</span>
+          <span class="gas-alert-banner__text">
+            检测到燃气泄漏！设备：{{ deviceName }}
+          </span>
+          <button class="gas-alert-banner__btn" @click="handleViewDetail">
+            查看详情
+          </button>
+        </div>
       </div>
-    </div>
-  </Transition>
+    </Transition>
+  </Teleport>
 </template>
 
 <script setup lang="ts">
@@ -36,14 +38,15 @@ function handleViewDetail() {
 .gas-alert-banner {
   position: fixed;
   top: 0;
-  left: 0;
+  left: 236px;
   right: 0;
   z-index: 2000;
   height: 40px;
-  background-color: var(--color-gas-alert, #DC2626);
+  background: linear-gradient(90deg, #DC2626, #EF4444);
   display: flex;
   align-items: center;
   justify-content: center;
+  box-shadow: 0 2px 12px rgba(220, 38, 38, 0.3);
 }
 
 .gas-alert-banner__content {
@@ -103,5 +106,11 @@ function handleViewDetail() {
 }
 .alert-slide-down-leave-to {
   transform: translateY(-100%);
+}
+
+@media (max-width: 860px) {
+  .gas-alert-banner {
+    left: 78px;
+  }
 }
 </style>

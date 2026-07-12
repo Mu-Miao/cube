@@ -20,6 +20,7 @@ export interface AiSuggestion {
 
 export interface AiSuggestions {
   suggestions: AiSuggestion[]
+  source?: 'llm' | 'rule'
 }
 
 export interface RiskWarnings {
@@ -40,6 +41,8 @@ export interface WeeklyReport {
     aqi: number | null
     sample_count: number
   }>
+  summary?: string | null
+  source?: 'llm' | 'rule'
 }
 
 export const getEnvironmentScore = (deviceId: string) => {
@@ -50,10 +53,14 @@ export const getRiskWarnings = (deviceId: string) => {
   return api.get(`/ai/${deviceId}/risks`) as Promise<RiskWarnings>
 }
 
-export const getAiSuggestions = (deviceId: string) => {
-  return api.get(`/ai/${deviceId}/suggestions`) as Promise<AiSuggestions>
+export const getAiSuggestions = (deviceId: string, forceLlm = false) => {
+  return api.get(`/ai/${deviceId}/suggestions`, {
+    params: forceLlm ? { force_llm: true } : undefined,
+  }) as Promise<AiSuggestions>
 }
 
-export const getWeeklyReport = (deviceId: string) => {
-  return api.get(`/ai/${deviceId}/weekly-report`) as Promise<WeeklyReport>
+export const getWeeklyReport = (deviceId: string, forceLlm = false) => {
+  return api.get(`/ai/${deviceId}/weekly-report`, {
+    params: forceLlm ? { force_llm: true } : undefined,
+  }) as Promise<WeeklyReport>
 }

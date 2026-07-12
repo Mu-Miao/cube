@@ -44,8 +44,10 @@ export interface SensorData {
   humidity: number      // 湿度（%RH）
   illuminance: number   // 光照强度（lx）
   aqi: number           // 空气质量指数
+  pm25?: number         // PM2.5 浓度（μg/m³，兼容新固件）
   tvoc: number          // 有机挥发物浓度
   eco2: number          // CO₂ 等效浓度（ppm）
+  formaldehyde?: number // 甲醛浓度（mg/m³，兼容新固件）
   mold_risk: number     // 霉菌风险等级（0-3）
   gas: number           // 燃气浓度（0=正常）
   wifi_rssi: number     // WiFi 信号强度（dBm）

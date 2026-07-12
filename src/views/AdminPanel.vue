@@ -167,7 +167,16 @@ onMounted(fetchAdminData)
 </script>
 
 <style scoped>
+/* ---- Liquid Glass Tokens ---- */
 .admin-page {
+  --glass-bg: linear-gradient(145deg, rgba(102, 198, 255, 0.075), rgba(5, 22, 49, 0.31));
+  --glass-border: 1px solid rgba(255, 255, 255, 0.18);
+  --glass-shadow: 0 8px 32px rgba(0, 0, 0, 0.12);
+  --glass-inner-shadow: inset 0 1px 1px rgba(255, 255, 255, 0.15);
+  --glass-radius: 20px;
+  --glass-blur: blur(18px);
+  --glass-saturation: saturate(1.6);
+
   display: flex;
   flex-direction: column;
   gap: 20px;
@@ -215,31 +224,41 @@ onMounted(fetchAdminData)
   position: relative;
   overflow: hidden;
   padding: 18px;
-  background:
-    linear-gradient(145deg, rgba(255, 255, 255, 0.055), rgba(255, 255, 255, 0.012)),
-    var(--bg-card);
-  border: var(--border-glass);
-  border-radius: var(--radius-card);
-  box-shadow: var(--shadow-card);
+  background: var(--glass-bg);
+  backdrop-filter: var(--glass-blur) var(--glass-saturation);
+  -webkit-backdrop-filter: var(--glass-blur) var(--glass-saturation);
+  border: var(--glass-border);
+  border-radius: var(--glass-radius);
+  box-shadow: var(--glass-shadow), var(--glass-inner-shadow);
   transition:
     transform var(--transition-spring),
+    background var(--transition-base),
     border-color var(--transition-base),
     box-shadow var(--transition-base);
 }
 
+/* Soft white top-edge highlight arc */
 .stat-card::before {
   content: '';
   position: absolute;
-  inset: 0 0 auto;
-  height: 2px;
-  background: linear-gradient(90deg, var(--color-cube-violet), var(--color-cube-primary), transparent);
-  opacity: 0.72;
+  top: 0;
+  left: 10%;
+  right: 10%;
+  height: 1px;
+  background: linear-gradient(
+    90deg,
+    transparent,
+    rgba(255, 255, 255, 0.35),
+    transparent
+  );
+  opacity: 0.8;
 }
 
 .stat-card:hover {
   transform: translateY(-4px);
-  border-color: rgba(139, 92, 246, 0.34);
-  box-shadow: var(--shadow-holo);
+  background: rgba(255, 255, 255, 0.1);
+  border-color: rgba(255, 255, 255, 0.28);
+  box-shadow: var(--glass-shadow), var(--glass-inner-shadow), 0 12px 40px rgba(0, 0, 0, 0.18);
 }
 
 .stat-label {
@@ -259,21 +278,36 @@ onMounted(fetchAdminData)
   position: relative;
   overflow: hidden;
   padding: 20px;
-  background:
-    linear-gradient(145deg, rgba(255, 255, 255, 0.052), rgba(255, 255, 255, 0.012)),
-    var(--bg-card);
-  border: var(--border-glass);
-  border-radius: var(--radius-card);
-  box-shadow: var(--shadow-card);
+  background: var(--glass-bg);
+  backdrop-filter: var(--glass-blur) var(--glass-saturation);
+  -webkit-backdrop-filter: var(--glass-blur) var(--glass-saturation);
+  border: var(--glass-border);
+  border-radius: var(--glass-radius);
+  box-shadow: var(--glass-shadow), var(--glass-inner-shadow);
+  transition:
+    background var(--transition-base),
+    box-shadow var(--transition-base);
 }
 
+/* Soft white top-edge highlight arc */
 .admin-tabs::before {
   content: '';
   position: absolute;
-  inset: 0 0 auto;
+  top: 0;
+  left: 10%;
+  right: 10%;
   height: 1px;
-  background: linear-gradient(90deg, transparent, var(--color-cube-violet), var(--color-cube-primary), transparent);
-  opacity: 0.62;
+  background: linear-gradient(
+    90deg,
+    transparent,
+    rgba(255, 255, 255, 0.35),
+    transparent
+  );
+  opacity: 0.8;
+}
+
+.admin-tabs:hover {
+  background: rgba(255, 255, 255, 0.095);
 }
 
 @media (max-width: 960px) {

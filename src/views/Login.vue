@@ -4,6 +4,24 @@
 <!-- 支持一键演示模式（快捷进入管理员演示状态） -->
 <template>
   <div class="login-page">
+    <MineradioParticleStage
+      class="login-particle-stage"
+      variant="login"
+      :density="0.78"
+      :intensity="0.72"
+    />
+    <div class="login-showcase">
+      <MascotCompanion
+        state="boot"
+        title="小眠"
+        message="正在等待你的桌面魔方上线。"
+        :metrics="[
+          { label: '控制台', value: 'READY' },
+          { label: '状态', value: 'SYNC' },
+          { label: '入口', value: 'MVP' },
+        ]"
+      />
+    </div>
     <div class="login-card">
       <!-- Logo + 页面标题 -->
       <div class="login-header">
@@ -84,6 +102,8 @@ import type { FormInstance, FormRules } from 'element-plus'
 import { useAuthStore } from '@/store/auth'
 import { login } from '@/api/auth'
 import { enableDemoMode } from '@/utils/demo'
+import MascotCompanion from '@/components/brand/MascotCompanion.vue'
+import MineradioParticleStage from '@/components/brand/MineradioParticleStage.vue'
 
 defineOptions({
   name: 'LoginPage',
@@ -165,56 +185,98 @@ async function handleDemoLogin() {
 </script>
 
 <style scoped>
-/* 登录页面布局：全屏深空背景 + 玻璃拟态卡片 */
+/* =============================================
+   Login — Liquid Glass Design
+   ============================================= */
+
+/* Page: transparent over ambient body gradient, no grid */
 .login-page {
+  --glass-bg: linear-gradient(145deg, rgba(102, 198, 255, 0.09), rgba(5, 22, 49, 0.34));
+  --glass-border: 1px solid rgba(255, 255, 255, 0.18);
+  --glass-shadow: 0 20px 60px rgba(0, 0, 0, 0.15);
+  --glass-inner-shadow: inset 0 1px 1px rgba(255, 255, 255, 0.12);
+  --glass-radius: 28px;
+  --glass-blur-heavy: 40px;
+  --glass-saturation: 1.6;
+
+  position: relative;
+  overflow: hidden;
   min-height: 100vh;
-  display: flex;
+  display: grid;
+  grid-template-columns: minmax(340px, 520px) 420px;
+  gap: 42px;
   align-items: center;
   justify-content: center;
-  background: var(--bg-canvas);
-  background-image:
-    linear-gradient(135deg, rgba(6, 182, 212, 0.09), transparent 32%),
-    linear-gradient(225deg, rgba(163, 230, 53, 0.055), transparent 34%),
-    repeating-linear-gradient(90deg, rgba(255, 255, 255, 0.028) 0 1px, transparent 1px 36px),
-    repeating-linear-gradient(0deg, rgba(255, 255, 255, 0.02) 0 1px, transparent 1px 36px);
+  background: transparent;
   padding: 24px;
 }
 
-/* 登录卡片：玻璃拟态 */
+.login-particle-stage {
+  z-index: 0;
+}
+
+.login-showcase,
+.login-card {
+  position: relative;
+  z-index: 1;
+}
+
+.login-showcase {
+  width: min(520px, 100%);
+}
+
+/* ---- Login card: liquid glass ---- */
 .login-card {
   position: relative;
   overflow: hidden;
   width: 420px;
-  padding: 40px;
-  background:
-    linear-gradient(145deg, rgba(255, 255, 255, 0.07), rgba(255, 255, 255, 0.015)),
-    var(--bg-card);
-  backdrop-filter: blur(20px) saturate(1.3);
-  -webkit-backdrop-filter: blur(20px) saturate(1.3);
-  border: var(--border-glass);
-  border-radius: var(--radius-lg);
-  box-shadow: var(--shadow-lg), 0 0 40px rgba(6, 182, 212, 0.08);
+  padding: 44px 40px 40px;
+  background: var(--glass-bg);
+  backdrop-filter: blur(var(--glass-blur-heavy)) saturate(var(--glass-saturation));
+  -webkit-backdrop-filter: blur(var(--glass-blur-heavy)) saturate(var(--glass-saturation));
+  border: var(--glass-border);
+  border-radius: var(--glass-radius);
+  box-shadow:
+    var(--glass-shadow),
+    var(--glass-inner-shadow),
+    0 0 80px rgba(6, 182, 212, 0.06);
   animation: slide-up 0.5s cubic-bezier(0.16, 1, 0.3, 1) both;
 }
 
+/* Top-edge highlight arc — simulates light reflecting off curved glass */
 .login-card::before {
   content: '';
   position: absolute;
-  inset: 0 0 auto;
-  height: 2px;
-  background: linear-gradient(90deg, var(--color-cube-primary), var(--color-cube-accent), var(--color-cube-violet));
-  background-size: 200% 100%;
-  animation: border-flow 4s linear infinite;
+  top: 0;
+  left: 8%;
+  right: 8%;
+  height: 140px;
+  background: radial-gradient(
+    ellipse 70% 100% at 50% 0%,
+    rgba(255, 255, 255, 0.18) 0%,
+    rgba(255, 255, 255, 0.06) 40%,
+    transparent 72%
+  );
+  border-radius: 0 0 50% 50%;
+  pointer-events: none;
+  z-index: 0;
 }
 
+/* Subtle inner glass reflection sheen */
 .login-card::after {
   content: '';
   position: absolute;
-  inset: 0 auto 0 0;
-  width: 36%;
-  background: repeating-linear-gradient(90deg, rgba(255, 255, 255, 0.045) 0 1px, transparent 1px 16px);
-  opacity: 0.08;
+  inset: 1px;
+  border-radius: calc(var(--glass-radius) - 1px);
+  background: linear-gradient(
+    165deg,
+    rgba(255, 255, 255, 0.08) 0%,
+    rgba(255, 255, 255, 0.02) 22%,
+    transparent 50%,
+    rgba(0, 0, 0, 0.03) 85%
+  );
   pointer-events: none;
+  z-index: 0;
 }
 
 .login-header {
@@ -224,7 +286,7 @@ async function handleDemoLogin() {
   z-index: 1;
 }
 
-/* 魔方 Logo */
+/* Logo */
 .login-logo {
   display: flex;
   justify-content: center;
@@ -234,7 +296,7 @@ async function handleDemoLogin() {
 .cube-icon {
   width: 48px;
   height: 48px;
-  filter: drop-shadow(0 0 16px rgba(6, 182, 212, 0.5));
+  filter: drop-shadow(0 0 20px rgba(6, 182, 212, 0.55));
 }
 
 .login-title {
@@ -265,7 +327,7 @@ async function handleDemoLogin() {
   margin-top: 12px;
 }
 
-/* 演示模式区域 */
+/* Demo section */
 .demo-section {
   margin-top: 24px;
 }
@@ -283,7 +345,7 @@ async function handleDemoLogin() {
   content: '';
   flex: 1;
   height: 1px;
-  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.16), transparent);
+  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.18), transparent);
 }
 
 .demo-btn {
@@ -301,7 +363,24 @@ async function handleDemoLogin() {
   font-weight: 500;
 }
 .register-link a:hover {
-  color: var(--primary-light);
+  color: var(--color-cube-accent);
   text-decoration: underline;
+}
+
+@media (max-width: 900px) {
+  .login-page {
+    grid-template-columns: minmax(0, 420px);
+  }
+
+  .login-showcase {
+    display: none;
+  }
+}
+
+@media (max-width: 480px) {
+  .login-card {
+    width: 100%;
+    padding: 32px 22px 28px;
+  }
 }
 </style>

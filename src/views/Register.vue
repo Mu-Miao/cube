@@ -156,56 +156,80 @@ async function handleRegister() {
 </script>
 
 <style scoped>
-/* 注册页面布局：全屏深空背景 + 玻璃拟态卡片 */
+/* =============================================
+   Register — Liquid Glass Design
+   ============================================= */
+
+/* Page: transparent over ambient body gradient, no grid */
 .register-page {
+  --glass-bg: linear-gradient(145deg, rgba(102, 198, 255, 0.08), rgba(5, 22, 49, 0.32));
+  --glass-border: 1px solid rgba(255, 255, 255, 0.18);
+  --glass-shadow: 0 20px 60px rgba(0, 0, 0, 0.15);
+  --glass-inner-shadow: inset 0 1px 1px rgba(255, 255, 255, 0.12);
+  --glass-radius: 28px;
+  --glass-blur-heavy: 40px;
+  --glass-saturation: 1.6;
+
   min-height: 100vh;
   display: flex;
   align-items: center;
   justify-content: center;
-  background: var(--bg-canvas);
-  background-image:
-    linear-gradient(135deg, rgba(6, 182, 212, 0.09), transparent 32%),
-    linear-gradient(225deg, rgba(139, 92, 246, 0.06), transparent 34%),
-    repeating-linear-gradient(90deg, rgba(255, 255, 255, 0.028) 0 1px, transparent 1px 36px),
-    repeating-linear-gradient(0deg, rgba(255, 255, 255, 0.02) 0 1px, transparent 1px 36px);
+  background: transparent;
   padding: 24px;
 }
 
-/* 注册卡片：玻璃拟态 */
+/* ---- Register card: liquid glass ---- */
 .register-card {
   position: relative;
   overflow: hidden;
   width: 420px;
-  padding: 40px;
-  background:
-    linear-gradient(145deg, rgba(255, 255, 255, 0.07), rgba(255, 255, 255, 0.015)),
-    var(--bg-card);
-  backdrop-filter: blur(20px) saturate(1.3);
-  -webkit-backdrop-filter: blur(20px) saturate(1.3);
-  border: var(--border-glass);
-  border-radius: var(--radius-lg);
-  box-shadow: var(--shadow-lg), 0 0 40px rgba(139, 92, 246, 0.08);
+  padding: 44px 40px 40px;
+  background: var(--glass-bg);
+  backdrop-filter: blur(var(--glass-blur-heavy)) saturate(var(--glass-saturation));
+  -webkit-backdrop-filter: blur(var(--glass-blur-heavy)) saturate(var(--glass-saturation));
+  border: var(--glass-border);
+  border-radius: var(--glass-radius);
+  box-shadow:
+    var(--glass-shadow),
+    var(--glass-inner-shadow),
+    0 0 80px rgba(139, 92, 246, 0.06);
   animation: slide-up 0.5s cubic-bezier(0.16, 1, 0.3, 1) both;
 }
 
+/* Top-edge highlight arc — simulates light reflecting off curved glass */
 .register-card::before {
   content: '';
   position: absolute;
-  inset: 0 0 auto;
-  height: 2px;
-  background: linear-gradient(90deg, var(--color-cube-primary), var(--color-cube-violet), var(--color-cube-accent));
-  background-size: 200% 100%;
-  animation: border-flow 4s linear infinite;
+  top: 0;
+  left: 8%;
+  right: 8%;
+  height: 140px;
+  background: radial-gradient(
+    ellipse 70% 100% at 50% 0%,
+    rgba(255, 255, 255, 0.18) 0%,
+    rgba(255, 255, 255, 0.06) 40%,
+    transparent 72%
+  );
+  border-radius: 0 0 50% 50%;
+  pointer-events: none;
+  z-index: 0;
 }
 
+/* Subtle inner glass reflection sheen */
 .register-card::after {
   content: '';
   position: absolute;
-  inset: 0 auto 0 0;
-  width: 36%;
-  background: repeating-linear-gradient(90deg, rgba(255, 255, 255, 0.045) 0 1px, transparent 1px 16px);
-  opacity: 0.08;
+  inset: 1px;
+  border-radius: calc(var(--glass-radius) - 1px);
+  background: linear-gradient(
+    165deg,
+    rgba(255, 255, 255, 0.08) 0%,
+    rgba(255, 255, 255, 0.02) 22%,
+    transparent 50%,
+    rgba(0, 0, 0, 0.03) 85%
+  );
   pointer-events: none;
+  z-index: 0;
 }
 
 .register-header {
@@ -215,7 +239,7 @@ async function handleRegister() {
   z-index: 1;
 }
 
-/* 魔方 Logo */
+/* Logo */
 .register-logo {
   display: flex;
   justify-content: center;
@@ -225,7 +249,7 @@ async function handleRegister() {
 .cube-icon {
   width: 48px;
   height: 48px;
-  filter: drop-shadow(0 0 16px rgba(6, 182, 212, 0.5));
+  filter: drop-shadow(0 0 20px rgba(6, 182, 212, 0.55));
 }
 
 .register-title {
@@ -257,7 +281,7 @@ async function handleRegister() {
   font-weight: 500;
 }
 .login-link a:hover {
-  color: var(--primary-light);
+  color: var(--color-cube-accent);
   text-decoration: underline;
 }
 </style>

@@ -2,30 +2,7 @@
 // 演示模式数据模拟工具
 // 在不连接后端的情况下提供模拟数据，用于竞赛演示和 MVP 功能展示
 
-/**
- * 检查当前是否处于演示模式
- * 支持通过 URL 参数 ?demo=true 或 localStorage 中的 demo 标志激活
- */
-export function isDemoMode(): boolean {
-  const urlParams = new URLSearchParams(window.location.search)
-  return urlParams.get('demo') === 'true' || localStorage.getItem('demo') === 'true'
-}
-
-/**
- * 启用演示模式
- * 同时在 URL 参数和 localStorage 中设置标志
- */
-export function enableDemoMode(): void {
-  localStorage.setItem('demo', 'true')
-}
-
-/**
- * 禁用演示模式
- * 清除 URL 参数和 localStorage 中的标志
- */
-export function disableDemoMode(): void {
-  localStorage.removeItem('demo')
-}
+export { isDemoMode, enableDemoMode, disableDemoMode } from './demoMode'
 
 // ============================================================
 // 模拟设备数据

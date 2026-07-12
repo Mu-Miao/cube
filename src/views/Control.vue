@@ -4,64 +4,103 @@
 <!-- 设备离线时所有控件置灰，禁止操作 -->
 <template>
   <div class="control-page">
-    <!-- 左侧设备列表 -->
-    <aside class="control-sidebar">
-      <div class="control-sidebar__title">设备列表</div>
-      <div class="control-sidebar__list">
-        <div
-          v-for="device in deviceStore.devices"
-          :key="device.device_id"
-          class="device-list-item"
-          :class="{
-            'device-list-item--active': selectedDeviceId === device.device_id,
-            'device-list-item--offline': device.status === 'offline',
-          }"
-          @click="selectDevice(device.device_id)"
-        >
-          <DeviceStatusDot :status="device.status" />
-          <span class="device-list-item__name">{{ device.device_name }}</span>
-        </div>
-        <!-- 无设备 -->
-        <div v-if="deviceStore.devices.length === 0" class="device-list-empty">
-          暂无设备
-        </div>
-      </div>
-    </aside>
+    <button class="control-back" title="返回控制台" @click="goBackToDashboard">
+      <ArrowLeft class="control-back__icon" />
+      <span>控制台</span>
+    </button>
 
-    <!-- 右侧控制区 -->
-    <main class="control-main">
-      <!-- 未选中设备 -->
-      <div v-if="!currentDevice" class="control-empty">
-        <el-icon :size="48" color="var(--text-disabled)"><Monitor /></el-icon>
-        <div class="control-empty__text">请从左侧选择一个设备</div>
-      </div>
+    <div v-if="!currentDevice" class="control-empty">
+      <el-icon :size="48" color="var(--text-disabled)"><Monitor /></el-icon>
+      <div class="control-empty__text">请先选择一个设备</div>
+    </div>
 
-      <!-- 已选中设备 -->
-      <template v-else>
-        <!-- 设备标题栏 -->
-        <div class="control-header">
-          <div class="control-header__info">
-            <h2 class="control-header__name">{{ currentDevice.device_name }}</h2>
-            <span class="control-header__id">{{ currentDevice.device_id }}</span>
-          </div>
-          <el-tag
-            :type="isOnline ? 'success' : 'danger'"
-            effect="dark"
-            size="small"
+    <template v-else>
+      <MineradioParticleStage
+        class="control-air-stage"
+        embedded
+        variant="hero"
+        :density="0.92"
+        :intensity="isOnline ? 0.92 : 0.48"
+      />
+
+      <header class="control-titlebar">
+        <div class="control-titlebar__info">
+          <span class="control-titlebar__eyebrow">数字孪生控制面板</span>
+          <h2>{{ currentDevice.device_name }}</h2>
+          <span>{{ currentDevice.device_id }}</span>
+        </div>
+        <div class="control-titlebar__devices">
+          <button
+            v-for="device in deviceStore.devices"
+            :key="device.device_id"
+            class="device-chip"
+            :class="{ 'device-chip--active': selectedDeviceId === device.device_id }"
+            @click="selectDevice(device.device_id)"
           >
-            {{ isOnline ? '在线' : '离线' }}
-          </el-tag>
+            <DeviceStatusDot :status="device.status" />
+            <span>{{ device.device_name }}</span>
+          </button>
         </div>
+      </header>
 
-        <!-- 离线提示 -->
-        <div v-if="!isOnline" class="control-offline-tip">
-          <el-icon :size="16"><WarningFilled /></el-icon>
-          <span>设备已离线，无法控制</span>
-        </div>
+      <div v-if="!isOnline" class="control-offline-tip">
+        <el-icon :size="16"><WarningFilled /></el-icon>
+        <span>设备已离线，无法控制</span>
+      </div>
 
-        <!-- 控制面板网格 -->
-        <div class="control-panels" :class="{ 'control-panels--disabled': !isOnline }">
-          <!-- 灯光控制面板 -->
+      <main class="control-stage">
+        <section class="control-column control-column--left">
+          <div class="control-panel control-panel--compact">
+            <div class="control-panel__header">
+              <span class="control-panel__title">空气成分图例</span>
+              <span class="control-panel__subtitle">实时粒子层</span>
+            </div>
+            <div class="air-legend">
+              <div v-for="item in airLegend" :key="item.label" class="air-legend__item">
+                <span class="air-legend__dot" :style="{ background: item.color }"></span>
+                <span class="air-legend__label">{{ item.label }}</span>
+                <span class="air-legend__name">{{ item.name }}</span>
+              </div>
+            </div>
+          </div>
+
+          <div class="control-panel control-panel--compact">
+            <div class="control-panel__header">
+              <span class="control-panel__title">孪生状态</span>
+              <span class="control-panel__status">
+                <DeviceStatusDot :status="isOnline ? 'online' : 'offline'" />
+                {{ isOnline ? '同步中' : '离线' }}
+              </span>
+            </div>
+            <div class="twin-metrics">
+              <div class="twin-metric">
+                <span>灯光</span>
+                <strong>{{ lightState.on ? `${lightState.brightness}%` : 'OFF' }}</strong>
+              </div>
+              <div class="twin-metric">
+                <span>蜂鸣器</span>
+                <strong>{{ buzzerState ? 'ON' : 'OFF' }}</strong>
+              </div>
+              <div class="twin-metric">
+                <span>专注模式</span>
+                <strong>{{ focusMode ? 'ON' : 'OFF' }}</strong>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <section class="control-twin-stage" :class="{ 'control-twin-stage--hidden': twinLaunchOverlay }">
+          <div ref="centralTwinRef" class="control-twin-stage__model">
+            <DigitalTwinPlaceholder
+              :label="currentDevice.device_name"
+              :offline="!isOnline"
+              show-label
+              size="hero"
+            />
+          </div>
+        </section>
+
+        <section class="control-column control-column--right" :class="{ 'control-panels--disabled': !isOnline }">
           <div class="control-panel">
             <div class="control-panel__header">
               <span class="control-panel__title">灯光控制</span>
@@ -72,123 +111,114 @@
             </div>
             <div class="control-panel__body">
               <LightColorPicker
-                v-model="lightState"
+                :model-value="lightState"
+                @update:model-value="Object.assign(lightState, $event)"
                 :disabled="!isOnline"
               />
             </div>
           </div>
 
-          <!-- 继电器与蜂鸣器面板 -->
           <div class="control-panel">
             <div class="control-panel__header">
               <span class="control-panel__title">继电器与蜂鸣器</span>
             </div>
             <div class="control-panel__body control-panel__body--toggles">
-              <ControlToggle
-                v-model="relayState.relay_1"
-                label="继电器1 (主灯)"
-                :disabled="!isOnline"
-                :loading="toggleLoading.relay_1"
-              />
-              <ControlToggle
-                v-model="relayState.relay_2"
-                label="继电器2 (备用)"
-                :disabled="!isOnline"
-                :loading="toggleLoading.relay_2"
-              />
-              <ControlToggle
-                v-model="buzzerState"
-                label="蜂鸣器 (报警)"
-                :disabled="!isOnline"
-                :loading="toggleLoading.buzzer"
-              />
+              <ControlToggle v-model="relayState.relay_1" label="继电器1 (主灯)" :disabled="!isOnline" :loading="toggleLoading.relay_1" />
+              <ControlToggle v-model="relayState.relay_2" label="继电器2 (备用)" :disabled="!isOnline" :loading="toggleLoading.relay_2" />
+              <ControlToggle v-model="buzzerState" label="蜂鸣器 (报警)" :disabled="!isOnline" :loading="toggleLoading.buzzer" />
             </div>
           </div>
 
-          <!-- 系统控制面板 -->
           <div class="control-panel">
             <div class="control-panel__header">
               <span class="control-panel__title">系统控制</span>
             </div>
             <div class="control-panel__body">
-              <ControlToggle
-                v-model="focusMode"
-                label="专注模式"
-                :disabled="!isOnline"
-                :loading="toggleLoading.focus_mode"
-              />
+              <ControlToggle v-model="focusMode" label="专注模式" :disabled="!isOnline" :loading="toggleLoading.focus_mode" />
               <div class="slider-control">
                 <span class="slider-control__label">屏幕亮度</span>
                 <div class="slider-control__slider">
-                  <el-slider
-                    v-model="screenBrightness"
-                    :min="0"
-                    :max="100"
-                    :disabled="!isOnline"
-                    :show-tooltip="true"
-                    @change="handleScreenBrightnessChange"
-                  />
+                  <el-slider v-model="screenBrightness" :min="0" :max="100" :disabled="!isOnline" :show-tooltip="true" @change="handleScreenBrightnessChange" />
                 </div>
                 <span class="slider-control__value">{{ screenBrightness }}%</span>
               </div>
             </div>
           </div>
+        </section>
+      </main>
 
-          <!-- 控制日志面板 -->
-          <div class="control-panel">
-            <div class="control-panel__header">
-              <span class="control-panel__title">控制日志</span>
-              <span class="control-panel__subtitle">最近 {{ maxLogs }} 条</span>
-            </div>
-            <div class="control-panel__body">
-              <div v-if="controlLogs.length === 0" class="log-empty">暂无操作记录</div>
-              <div v-else class="log-list">
-                <div
-                  v-for="log in controlLogs"
-                  :key="log.id"
-                  class="log-item"
-                >
-                  <span class="log-item__time">{{ log.time }}</span>
-                  <span class="log-item__desc">{{ log.description }}</span>
-                  <el-tag
-                    :type="log.status === 'success' ? 'success' : 'danger'"
-                    size="small"
-                    effect="plain"
-                    class="log-item__tag"
-                  >
-                    {{ log.status === 'success' ? '成功' : '失败' }}
-                  </el-tag>
-                </div>
+      <section class="control-log-dock">
+        <div class="control-panel">
+          <div class="control-panel__header">
+            <span class="control-panel__title">控制日志</span>
+            <span class="control-panel__subtitle">最近 {{ maxLogs }} 条</span>
+          </div>
+          <div class="control-panel__body">
+            <div v-if="controlLogs.length === 0" class="log-empty">暂无操作记录</div>
+            <div v-else class="log-list">
+              <div v-for="log in controlLogs" :key="log.id" class="log-item">
+                <span class="log-item__time">{{ log.time }}</span>
+                <span class="log-item__desc">{{ log.description }}</span>
+                <el-tag :type="log.status === 'success' ? 'success' : 'danger'" size="small" effect="plain" class="log-item__tag">
+                  {{ log.status === 'success' ? '成功' : '失败' }}
+                </el-tag>
               </div>
             </div>
           </div>
         </div>
-      </template>
-    </main>
+      </section>
+    </template>
+
+    <DigitalTwinPlaceholder
+      v-if="twinLaunchOverlay"
+      class="control-twin-launch"
+      :class="{ 'control-twin-launch--settled': twinLaunchOverlay.settled }"
+      :style="twinLaunchStyle"
+      :label="currentDevice?.device_name || 'Twin Model'"
+      size="hero"
+    />
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref, reactive, computed, watch, onMounted } from 'vue'
-import { useRoute } from 'vue-router'
+import { ref, reactive, computed, watch, onMounted, nextTick } from 'vue'
+import { useRoute, useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
-import { Monitor, WarningFilled } from '@element-plus/icons-vue'
+import { ArrowLeft, Monitor, WarningFilled } from '@element-plus/icons-vue'
 import DeviceStatusDot from '@/components/DeviceStatusDot.vue'
 import LightColorPicker from '@/components/LightColorPicker.vue'
 import ControlToggle from '@/components/ControlToggle.vue'
+import DigitalTwinPlaceholder from '@/components/brand/DigitalTwinPlaceholder.vue'
+import MineradioParticleStage from '@/components/brand/MineradioParticleStage.vue'
 import { useDeviceStore } from '@/store/device'
 import { sendControlCommand } from '@/api/device'
 import { getDeviceList } from '@/api/device'
 defineOptions({ name: 'ControlPage' })
 
 const route = useRoute()
+const router = useRouter()
 const deviceStore = useDeviceStore()
 
 // 当前选中的设备 ID
 const selectedDeviceId = ref('')
+const centralTwinRef = ref<HTMLElement>()
+const twinLaunchOverlay = ref<{
+  from: { left: number; top: number; width: number; height: number }
+  to: { left: number; top: number; width: number; height: number }
+  settled: boolean
+} | null>(null)
 
 // 最大日志条数
 const maxLogs = 5
+
+const airLegend = [
+  { label: 'O2', name: '氧气', color: '#a3e635' },
+  { label: 'CO2', name: '二氧化碳', color: '#60a5fa' },
+  { label: 'H2O', name: '水汽', color: '#22d3ee' },
+  { label: 'PM2.5', name: '细颗粒物', color: '#9ca3af' },
+  { label: 'TVOC', name: '挥发物', color: '#fbbf24' },
+  { label: 'CH2O', name: '甲醛', color: '#fb7185' },
+]
 
 // 当前设备对象
 const currentDevice = computed(() => {
@@ -198,6 +228,17 @@ const currentDevice = computed(() => {
 // 设备是否在线
 const isOnline = computed(() => {
   return currentDevice.value?.status === 'online'
+})
+
+const twinLaunchStyle = computed(() => {
+  if (!twinLaunchOverlay.value) return undefined
+  const rect = twinLaunchOverlay.value.settled ? twinLaunchOverlay.value.to : twinLaunchOverlay.value.from
+  return {
+    left: `${rect.left}px`,
+    top: `${rect.top}px`,
+    width: `${rect.width}px`,
+    height: `${rect.height}px`,
+  }
 })
 
 // === 灯光状态 ===
@@ -367,6 +408,61 @@ function selectDevice(deviceId: string) {
   controlLogs.value = []
 }
 
+async function playLaunchTransition() {
+  const payload = sessionStorage.getItem('tianmu:twin-transition')
+  if (!payload) return
+
+  sessionStorage.removeItem('tianmu:twin-transition')
+  try {
+    const parsed = JSON.parse(payload) as {
+      deviceId: string
+      rect: { left: number; top: number; width: number; height: number }
+    }
+    if (parsed.deviceId !== selectedDeviceId.value) return
+    await nextTick()
+    const targetRect = centralTwinRef.value?.getBoundingClientRect()
+    if (!targetRect) return
+
+    twinLaunchOverlay.value = {
+      from: parsed.rect,
+      to: {
+        left: targetRect.left,
+        top: targetRect.top,
+        width: targetRect.width,
+        height: targetRect.height,
+      },
+      settled: false,
+    }
+    requestAnimationFrame(() => {
+      if (twinLaunchOverlay.value) twinLaunchOverlay.value.settled = true
+    })
+    window.setTimeout(() => {
+      twinLaunchOverlay.value = null
+    }, 780)
+  } catch {
+    twinLaunchOverlay.value = null
+  }
+}
+
+function goBackToDashboard() {
+  const rect = centralTwinRef.value?.getBoundingClientRect()
+  if (rect && selectedDeviceId.value) {
+    sessionStorage.setItem(
+      'tianmu:twin-return',
+      JSON.stringify({
+        deviceId: selectedDeviceId.value,
+        rect: {
+          left: rect.left,
+          top: rect.top,
+          width: rect.width,
+          height: rect.height,
+        },
+      }),
+    )
+  }
+  router.push({ path: '/dashboard', query: route.query.demo ? { demo: route.query.demo } : undefined })
+}
+
 /**
  * 获取设备列表
  */
@@ -390,31 +486,45 @@ onMounted(async () => {
     // 默认选中第一个设备
     selectedDeviceId.value = deviceStore.devices[0]?.device_id ?? ''
   }
+  await playLaunchTransition()
 })
 </script>
 
 <style scoped>
+/* ========== Liquid Glass — CSS Custom Properties ========== */
 .control-page {
+  --glass-bg: linear-gradient(145deg, rgba(102, 198, 255, 0.075), rgba(5, 22, 49, 0.31));
+  --glass-border: 1px solid rgba(255, 255, 255, 0.18);
+  --glass-shadow: 0 8px 32px rgba(0, 0, 0, 0.12);
+  --glass-inner-shadow: inset 0 1px 1px rgba(255, 255, 255, 0.15);
+  --glass-radius: 20px;
+  --glass-radius-sm: 14px;
+  --glass-blur: blur(18px);
+  --glass-saturation: saturate(1.6);
+  --color-cube-primary: #06B6D4;
+  --color-cube-accent: #A3E635;
+  --text-primary: rgba(255, 255, 255, 0.92);
+  --text-secondary: rgba(255, 255, 255, 0.60);
+  --text-disabled: rgba(255, 255, 255, 0.30);
+
   display: flex;
   gap: 0;
-  height: calc(100vh - 60px - 48px); /* 减去顶栏和 padding */
+  height: calc(100vh - 60px - 48px);
   margin: calc(-1 * var(--spacing-page));
   margin-top: calc(-1 * var(--spacing-page) + 0px);
 }
 
-/* ========== 左侧设备列表 ========== */
+/* ========== 左侧设备列表 — Glass Sidebar ========== */
 .control-sidebar {
   width: 240px;
   flex-shrink: 0;
-  background:
-    linear-gradient(180deg, rgba(255, 255, 255, 0.046), rgba(255, 255, 255, 0.01)),
-    rgba(10, 15, 22, 0.62);
-  border-right: var(--border-glass);
+  background: var(--glass-bg);
+  border-right: var(--glass-border);
   display: flex;
   flex-direction: column;
   overflow: hidden;
-  backdrop-filter: blur(14px) saturate(1.16);
-  -webkit-backdrop-filter: blur(14px) saturate(1.16);
+  backdrop-filter: var(--glass-blur) var(--glass-saturation);
+  -webkit-backdrop-filter: var(--glass-blur) var(--glass-saturation);
 }
 .control-sidebar__title {
   padding: 18px 16px 12px;
@@ -431,13 +541,13 @@ onMounted(async () => {
   padding: 0 8px 8px;
 }
 
-/* 设备列表项 */
+/* 设备列表项 — Glass List Items */
 .device-list-item {
   display: flex;
   align-items: center;
   gap: 10px;
   padding: 11px 12px;
-  border-radius: 10px;
+  border-radius: var(--glass-radius-sm);
   cursor: pointer;
   transition:
     transform var(--transition-spring),
@@ -450,14 +560,14 @@ onMounted(async () => {
   overflow: hidden;
 }
 .device-list-item:hover {
-  background: rgba(255, 255, 255, 0.045);
-  border-color: rgba(255, 255, 255, 0.08);
+  background: rgba(255, 255, 255, 0.12);
+  border-color: rgba(255, 255, 255, 0.22);
   transform: translateX(3px);
 }
 .device-list-item--active {
-  background: linear-gradient(90deg, rgba(6, 182, 212, 0.16), rgba(163, 230, 53, 0.055));
-  border-color: rgba(6, 182, 212, 0.28);
-  box-shadow: inset 0 0 20px rgba(6, 182, 212, 0.08);
+  background: rgba(255, 255, 255, 0.12);
+  border-color: rgba(255, 255, 255, 0.28);
+  box-shadow: var(--glass-inner-shadow);
 }
 .device-list-item--active::before {
   content: '';
@@ -515,18 +625,18 @@ onMounted(async () => {
   font-size: 15px;
 }
 
-/* 设备标题栏 */
+/* 设备标题栏 — Glass Header */
 .control-header {
   display: flex;
   align-items: center;
   justify-content: space-between;
   padding: 18px 20px;
-  border: var(--border-glass);
-  border-radius: var(--radius-card);
-  background:
-    linear-gradient(145deg, rgba(255, 255, 255, 0.052), rgba(255, 255, 255, 0.012)),
-    var(--bg-card);
-  box-shadow: var(--shadow-card);
+  border: var(--glass-border);
+  border-radius: var(--glass-radius);
+  background: var(--glass-bg);
+  box-shadow: var(--glass-shadow), var(--glass-inner-shadow);
+  backdrop-filter: var(--glass-blur) var(--glass-saturation);
+  -webkit-backdrop-filter: var(--glass-blur) var(--glass-saturation);
 }
 .control-header__info {
   display: flex;
@@ -557,18 +667,20 @@ onMounted(async () => {
   color: var(--text-secondary);
 }
 
-/* 离线提示 */
+/* 离线提示 — Glass Warning */
 .control-offline-tip {
   display: flex;
   align-items: center;
   gap: 8px;
   padding: 10px 16px;
-  background: linear-gradient(90deg, rgba(239, 68, 68, 0.16), rgba(245, 158, 11, 0.06));
-  border: 1px solid rgba(239, 68, 68, 0.2);
-  border-radius: var(--radius-button);
+  background: rgba(239, 68, 68, 0.10);
+  border: 1px solid rgba(239, 68, 68, 0.25);
+  border-radius: var(--glass-radius-sm);
   color: var(--color-danger);
   font-size: 13px;
   font-weight: 500;
+  backdrop-filter: blur(12px) saturate(1.4);
+  -webkit-backdrop-filter: blur(12px) saturate(1.4);
 }
 
 /* ========== 控制面板网格 ========== */
@@ -582,36 +694,43 @@ onMounted(async () => {
   opacity: 0.5;
 }
 
-/* 单个控制面板 */
+/* 单个控制面板 — Glass Card */
 .control-panel {
   position: relative;
-  background:
-    linear-gradient(145deg, rgba(255, 255, 255, 0.058), rgba(255, 255, 255, 0.012)),
-    var(--bg-card);
-  backdrop-filter: blur(12px);
-  -webkit-backdrop-filter: blur(12px);
-  border: var(--border-glass);
-  border-radius: var(--radius-card);
+  background: var(--glass-bg);
+  backdrop-filter: var(--glass-blur) var(--glass-saturation);
+  -webkit-backdrop-filter: var(--glass-blur) var(--glass-saturation);
+  border: var(--glass-border);
+  border-radius: var(--glass-radius);
   overflow: hidden;
-  box-shadow: var(--shadow-card);
+  box-shadow: var(--glass-shadow), var(--glass-inner-shadow);
   transition:
     transform var(--transition-spring),
     border-color var(--transition-base),
-    box-shadow var(--transition-base);
+    box-shadow var(--transition-base),
+    background var(--transition-base);
   animation: fade-up-blur 0.5s cubic-bezier(0.16, 1, 0.3, 1) both;
 }
+/* Top edge highlight — subtle white gradient line */
 .control-panel::before {
   content: '';
   position: absolute;
   inset: 0 0 auto;
-  height: 2px;
-  background: linear-gradient(90deg, var(--color-cube-primary), var(--color-cube-accent), transparent);
-  opacity: 0.68;
+  height: 1px;
+  background: linear-gradient(
+    90deg,
+    rgba(255, 255, 255, 0.40),
+    rgba(255, 255, 255, 0.12),
+    transparent
+  );
 }
 .control-panel:hover {
   transform: translateY(-4px);
-  border-color: rgba(6, 182, 212, 0.34);
-  box-shadow: var(--shadow-holo);
+  background: rgba(255, 255, 255, 0.12);
+  border-color: rgba(255, 255, 255, 0.28);
+  box-shadow:
+    0 12px 40px rgba(0, 0, 0, 0.18),
+    inset 0 1px 1px rgba(255, 255, 255, 0.20);
 }
 .control-panel:nth-child(2) { animation-delay: 60ms; }
 .control-panel:nth-child(3) { animation-delay: 120ms; }
@@ -622,8 +741,8 @@ onMounted(async () => {
   align-items: center;
   justify-content: space-between;
   padding: 16px 20px 14px;
-  border-bottom: var(--border-default);
-  background: rgba(255, 255, 255, 0.018);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.10);
+  background: rgba(255, 255, 255, 0.03);
 }
 .control-panel__title {
   font-family: var(--font-display);
@@ -653,15 +772,15 @@ onMounted(async () => {
   gap: 14px;
 }
 
-/* 滑块控制 */
+/* 滑块控制 — Glass Slider */
 .slider-control {
   display: flex;
   align-items: center;
   gap: 12px;
   padding: 12px;
-  border: 1px solid rgba(255, 255, 255, 0.055);
-  border-radius: var(--radius-button);
-  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: var(--glass-radius-sm);
+  background: rgba(255, 255, 255, 0.05);
 }
 .slider-control__label {
   font-family: var(--font-body);
@@ -690,7 +809,7 @@ onMounted(async () => {
   flex-shrink: 0;
 }
 
-/* ========== 控制日志 ========== */
+/* ========== 控制日志 — Glass Log ========== */
 .log-empty {
   text-align: center;
   padding: 20px;
@@ -707,9 +826,9 @@ onMounted(async () => {
   align-items: center;
   gap: 10px;
   padding: 8px 10px;
-  background: rgba(255, 255, 255, 0.04);
-  border: 1px solid rgba(255, 255, 255, 0.05);
-  border-radius: var(--radius-button);
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: var(--glass-radius-sm);
   font-size: 13px;
   transition:
     transform var(--transition-base),
@@ -718,8 +837,8 @@ onMounted(async () => {
 }
 .log-item:hover {
   transform: translateX(3px);
-  border-color: rgba(6, 182, 212, 0.24);
-  background: rgba(6, 182, 212, 0.055);
+  border-color: rgba(255, 255, 255, 0.22);
+  background: rgba(255, 255, 255, 0.12);
 }
 .log-item__time {
   font-family: var(--font-mono);
@@ -740,12 +859,371 @@ onMounted(async () => {
 
 /* ========== Element Plus 覆盖 ========== */
 .control-panel :deep(.el-slider__runway) {
-  background-color: rgba(255, 255, 255, 0.08);
+  background-color: rgba(255, 255, 255, 0.10);
 }
 .control-panel :deep(.el-slider__bar) {
   background: linear-gradient(90deg, var(--color-cube-primary), var(--color-cube-accent));
 }
 .control-panel :deep(.el-slider__button) {
   border-color: var(--color-cube-primary);
+}
+
+/* ========== Digital Twin Control Rebuild ========== */
+.control-page {
+  position: relative;
+  min-height: calc(100vh - 60px - 48px);
+  height: auto;
+  margin: calc(-1 * var(--spacing-page));
+  padding: 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  overflow: hidden;
+  background:
+    radial-gradient(circle at 50% 44%, rgba(34, 211, 238, 0.16), transparent 38%),
+    radial-gradient(circle at 68% 58%, rgba(163, 230, 53, 0.08), transparent 34%);
+}
+
+.control-back {
+  position: absolute;
+  top: 22px;
+  left: 24px;
+  z-index: 16;
+  height: 38px;
+  padding: 0 14px 0 11px;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--text-primary);
+  font: 600 13px/1 var(--font-body);
+  border: 1px solid rgba(216, 242, 255, 0.28);
+  border-radius: 13px;
+  background:
+    linear-gradient(145deg, rgba(124, 211, 255, 0.14), rgba(9, 26, 55, 0.46)),
+    rgba(255, 255, 255, 0.05);
+  box-shadow: var(--glass-shadow), var(--glass-inner-shadow);
+  backdrop-filter: blur(28px) saturate(1.8);
+  -webkit-backdrop-filter: blur(28px) saturate(1.8);
+  cursor: pointer;
+  transition:
+    transform var(--transition-spring),
+    border-color var(--transition-base),
+    background var(--transition-base);
+}
+
+.control-back:hover {
+  transform: translateX(-3px);
+  border-color: rgba(226, 250, 255, 0.48);
+  background: var(--glass-bg-hover);
+}
+
+.control-back__icon {
+  width: 16px;
+  height: 16px;
+}
+
+.control-air-stage {
+  position: absolute;
+  inset: 0;
+  opacity: 0.8;
+}
+
+.control-titlebar {
+  position: relative;
+  z-index: 4;
+  margin-left: 118px;
+  min-height: 74px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 18px;
+  padding: 14px 18px;
+  border: 1px solid rgba(216, 242, 255, 0.2);
+  border-radius: 22px;
+  background:
+    linear-gradient(120deg, rgba(94, 190, 255, 0.09), rgba(6, 22, 48, 0.34) 52%, rgba(163, 230, 53, 0.05)),
+    rgba(255, 255, 255, 0.035);
+  box-shadow: var(--glass-shadow), var(--glass-inner-shadow);
+  backdrop-filter: blur(30px) saturate(1.85);
+  -webkit-backdrop-filter: blur(30px) saturate(1.85);
+}
+
+.control-titlebar__info {
+  min-width: 220px;
+}
+
+.control-titlebar__eyebrow {
+  display: block;
+  margin-bottom: 3px;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: rgba(163, 230, 53, 0.78);
+}
+
+.control-titlebar h2 {
+  margin: 0;
+  font-family: var(--font-display);
+  font-size: 22px;
+  color: var(--text-primary);
+}
+
+.control-titlebar__info > span:last-child {
+  display: block;
+  margin-top: 3px;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--text-secondary);
+}
+
+.control-titlebar__devices {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.device-chip {
+  height: 32px;
+  max-width: 168px;
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 0 11px;
+  color: var(--text-secondary);
+  border: 1px solid rgba(216, 242, 255, 0.14);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.04);
+  cursor: pointer;
+  transition: all var(--transition-fast);
+}
+
+.device-chip span:last-child {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.device-chip--active,
+.device-chip:hover {
+  color: var(--text-primary);
+  border-color: rgba(163, 230, 53, 0.38);
+  background: rgba(163, 230, 53, 0.1);
+}
+
+.control-stage {
+  position: relative;
+  z-index: 3;
+  flex: 1;
+  min-height: 540px;
+  display: grid;
+  grid-template-columns: minmax(220px, 280px) minmax(320px, 1fr) minmax(280px, 360px);
+  align-items: center;
+  gap: 18px;
+}
+
+.control-column {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.control-twin-stage {
+  position: relative;
+  min-height: 460px;
+  display: grid;
+  place-items: center;
+  opacity: 1;
+  transition: opacity 220ms ease 560ms;
+}
+
+.control-twin-stage--hidden {
+  opacity: 0;
+}
+
+.control-twin-stage::before {
+  content: '';
+  position: absolute;
+  width: min(52vw, 560px);
+  aspect-ratio: 1;
+  border-radius: 50%;
+  background:
+    radial-gradient(circle, rgba(34, 211, 238, 0.15), transparent 60%),
+    conic-gradient(from 120deg, transparent, rgba(163, 230, 53, 0.16), transparent, rgba(34, 211, 238, 0.14), transparent);
+  filter: blur(1px);
+  animation: twin-platform-turn 12s linear infinite;
+}
+
+.control-twin-stage__model {
+  position: relative;
+  z-index: 2;
+  width: min(42vw, 420px);
+  aspect-ratio: 1;
+  display: grid;
+  place-items: center;
+}
+
+.control-twin-stage__model :deep(.digital-twin) {
+  width: 100%;
+}
+
+.control-panel {
+  background:
+    linear-gradient(145deg, rgba(102, 198, 255, 0.1), rgba(5, 22, 49, 0.36)),
+    rgba(255, 255, 255, 0.035);
+  border-color: rgba(216, 242, 255, 0.22);
+}
+
+.control-panel--compact .control-panel__body {
+  padding: 14px;
+}
+
+.air-legend {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 8px;
+}
+
+.air-legend__item {
+  display: grid;
+  grid-template-columns: 12px minmax(48px, auto) 1fr;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 9px;
+  border: 1px solid rgba(216, 242, 255, 0.12);
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.045);
+}
+
+.air-legend__dot {
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  box-shadow: 0 0 12px currentColor;
+}
+
+.air-legend__label {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--text-primary);
+}
+
+.air-legend__name {
+  font-size: 12px;
+  color: var(--text-secondary);
+  text-align: right;
+}
+
+.twin-metrics {
+  display: grid;
+  gap: 8px;
+}
+
+.twin-metric {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 12px;
+  border-radius: 13px;
+  background: rgba(255, 255, 255, 0.045);
+  border: 1px solid rgba(216, 242, 255, 0.12);
+}
+
+.twin-metric span {
+  color: var(--text-secondary);
+  font-size: 12px;
+}
+
+.twin-metric strong {
+  font-family: var(--font-mono);
+  font-size: 13px;
+  color: var(--text-primary);
+}
+
+.control-log-dock {
+  position: relative;
+  z-index: 4;
+}
+
+.control-log-dock .control-panel__body {
+  padding: 12px 16px 16px;
+}
+
+.control-twin-launch {
+  position: fixed;
+  z-index: 999;
+  pointer-events: none;
+  transition:
+    left 760ms cubic-bezier(0.2, 0.9, 0.18, 1),
+    top 760ms cubic-bezier(0.2, 0.9, 0.18, 1),
+    width 760ms cubic-bezier(0.2, 0.9, 0.18, 1),
+    height 760ms cubic-bezier(0.2, 0.9, 0.18, 1),
+    opacity 220ms ease 560ms,
+    filter 760ms ease;
+  filter: drop-shadow(0 24px 54px rgba(34, 211, 238, 0.26));
+}
+
+.control-twin-launch--settled {
+  opacity: 0;
+  filter: drop-shadow(0 10px 24px rgba(34, 211, 238, 0.1));
+}
+
+@keyframes twin-platform-turn {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
+@media (max-width: 1180px) {
+  .control-stage {
+    grid-template-columns: 1fr;
+  }
+
+  .control-column--left,
+  .control-column--right {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .control-titlebar {
+    margin-left: 0;
+    padding-left: 108px;
+  }
+}
+
+@media (max-width: 760px) {
+  .control-page {
+    padding: 18px;
+  }
+
+  .control-back {
+    position: relative;
+    top: auto;
+    left: auto;
+    align-self: flex-start;
+  }
+
+  .control-titlebar {
+    margin-left: 0;
+    padding: 14px;
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .control-titlebar__devices {
+    justify-content: flex-start;
+  }
+
+  .control-column--left,
+  .control-column--right {
+    grid-template-columns: 1fr;
+  }
+
+  .control-twin-stage {
+    min-height: 320px;
+  }
+
+  .control-twin-stage__model {
+    width: min(78vw, 320px);
+  }
 }
 </style>
