@@ -61,6 +61,7 @@
           <div class="dashboard-control-twin__halo"></div>
           <DigitalTwinPlaceholder
             class="dashboard-control-twin__model"
+            :class="{ 'dashboard-control-twin__model--flight-hidden': twinFlightActive }"
             :label="controlModeDevice.device_name"
             :offline="controlModeDevice.status !== 'online'"
             show-label
@@ -166,9 +167,10 @@
           :device="device"
           :temperature="getDeviceTemp(device.device_id)"
           :humidity="getDeviceHumidity(device.device_id)"
-          :launching="launchingDeviceId === device.device_id || returningDeviceId === device.device_id"
+          :launching="launchingDeviceId === device.device_id"
           :muted="Boolean(launchingDeviceId && launchingDeviceId !== device.device_id)"
           :transition-name="!controlModeDeviceId && selectedDeviceId === device.device_id ? 'active-twin' : undefined"
+          :twin-hidden="twinFlightActive && selectedDeviceId === device.device_id"
           @click="handleDeviceClick"
         />
         <!-- + 添加设备按钮卡片 -->
@@ -341,6 +343,25 @@
       </template>
     </el-dialog>
     </template>
+
+    <div
+      v-if="twinFlightVisible"
+      ref="twinFlightRef"
+      class="dashboard-twin-flight"
+      :class="{
+        'dashboard-twin-flight--playing': twinFlightPlaying,
+        'dashboard-twin-flight--return': twinFlightDirection === 'return',
+      }"
+      :style="twinFlightStyle"
+      aria-hidden="true"
+    >
+      <DigitalTwinPlaceholder
+        :label="twinFlightLabel"
+        :offline="twinFlightOffline"
+        show-label
+        size="hero"
+      />
+    </div>
   </div>
 </template>
 
@@ -378,6 +399,15 @@ const launchingDeviceId = ref('')
 const returningDeviceId = ref('')
 const controlModeDeviceId = ref('')
 const controlContentVisible = ref(false)
+const twinFlightRef = ref<HTMLElement>()
+const twinFlightVisible = ref(false)
+const twinFlightActive = ref(false)
+const twinFlightPlaying = ref(false)
+const twinFlightDirection = ref<'enter' | 'return'>('enter')
+const twinFlightStyle = ref<Record<string, string>>({})
+const twinFlightLabel = ref('Twin Model')
+const twinFlightOffline = ref(false)
+let twinFlightCleanupTimer = 0
 
 const airLegend = [
   { label: 'O2', name: '氧气', color: '#a3e635' },
@@ -814,24 +844,117 @@ async function runSamePageTransition(update: () => void | Promise<void>) {
   const reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches
   if (!doc.startViewTransition || reduceMotion) {
     await update()
-    return
+    return false
   }
 
   const transition = doc.startViewTransition(update)
   await transition.finished.catch(() => undefined)
+  return true
 }
 
-async function enterInlineControl(deviceId: string) {
+function prefersReducedMotion() {
+  return window.matchMedia('(prefers-reduced-motion: reduce)').matches
+}
+
+function readTwinRect(selector: string) {
+  const element = document.querySelector(selector) as HTMLElement | null
+  return element?.getBoundingClientRect()
+}
+
+function readDeviceTwinRect(deviceId: string) {
+  const cards = Array.from(document.querySelectorAll<HTMLElement>('[data-device-card]'))
+  const card = cards.find((item) => item.dataset.deviceCard === deviceId)
+  const twin = card?.querySelector('.digital-twin') as HTMLElement | null
+  return twin?.getBoundingClientRect()
+}
+
+function prepareTwinFlight(
+  rect: DOMRect,
+  device: { device_name?: string; status?: string } | undefined,
+  direction: 'enter' | 'return',
+) {
+  twinFlightDirection.value = direction
+  twinFlightLabel.value = device?.device_name || 'Twin Model'
+  twinFlightOffline.value = device?.status !== 'online'
+  twinFlightStyle.value = {
+    width: `${Math.max(1, rect.width)}px`,
+    height: `${Math.max(1, rect.height)}px`,
+    transform: `translate3d(${rect.left}px, ${rect.top}px, 0)`,
+  }
+  twinFlightPlaying.value = false
+  twinFlightActive.value = true
+  twinFlightVisible.value = true
+}
+
+async function animateTwinFlight(fromRect: DOMRect | undefined, toRect: DOMRect | undefined) {
+  if (!fromRect || !toRect || prefersReducedMotion()) {
+    return
+  }
+
+  const targetWidth = Math.max(1, toRect.width)
+  const targetHeight = Math.max(1, toRect.height)
+  const startScaleX = Math.max(0.08, fromRect.width / targetWidth)
+  const startScaleY = Math.max(0.08, fromRect.height / targetHeight)
+
+  twinFlightStyle.value = {
+    width: `${targetWidth}px`,
+    height: `${targetHeight}px`,
+    '--twin-flight-from': `translate3d(${fromRect.left}px, ${fromRect.top}px, 0) scale(${startScaleX}, ${startScaleY})`,
+    '--twin-flight-to': `translate3d(${toRect.left}px, ${toRect.top}px, 0) scale(1, 1)`,
+    '--twin-flight-end-opacity': twinFlightDirection.value === 'return' ? '0.84' : '1',
+  }
+  twinFlightPlaying.value = true
+  twinFlightVisible.value = true
+
+  await nextTick()
+
+  await new Promise<void>((resolve) => {
+    window.setTimeout(resolve, 1080)
+  })
+}
+
+function finishTwinFlight() {
+  window.clearTimeout(twinFlightCleanupTimer)
+  twinFlightActive.value = false
+  twinFlightPlaying.value = false
+  twinFlightCleanupTimer = window.setTimeout(() => {
+    twinFlightVisible.value = false
+    twinFlightStyle.value = {}
+  }, 40)
+}
+
+async function enterInlineControl(deviceId: string, startRect?: DOMRect) {
+  const flightStartRect = startRect || readDeviceTwinRect(deviceId)
+  const device = deviceStore.devices.find((item) => item.device_id === deviceId)
   selectedDeviceId.value = deviceId
   fetchLatestData(deviceId)
   launchingDeviceId.value = deviceId
   controlContentVisible.value = false
-  await runSamePageTransition(async () => {
+  if (flightStartRect && !prefersReducedMotion()) {
+    prepareTwinFlight(flightStartRect, device, 'enter')
+  }
+
+  const updateToControlMode = async () => {
     chart?.dispose()
     chart = null
     controlModeDeviceId.value = deviceId
     await nextTick()
-  })
+  }
+  const shouldUseTwinFlight = Boolean(flightStartRect && !prefersReducedMotion())
+  const usedNativeTransition = shouldUseTwinFlight
+    ? false
+    : await runSamePageTransition(updateToControlMode)
+  if (shouldUseTwinFlight) {
+    await updateToControlMode()
+  }
+  if (!usedNativeTransition && flightStartRect) {
+    await nextTick()
+    await animateTwinFlight(flightStartRect, readTwinRect('.dashboard-control-twin__model'))
+    finishTwinFlight()
+  } else {
+    finishTwinFlight()
+  }
+
   launchingDeviceId.value = ''
   window.setTimeout(() => {
     if (controlModeDeviceId.value === deviceId) {
@@ -840,8 +963,8 @@ async function enterInlineControl(deviceId: string) {
   }, 80)
 }
 
-function handleDeviceClick(device: { device_id: string }) {
-  void enterInlineControl(device.device_id)
+function handleDeviceClick(device: { device_id: string }, rect?: DOMRect) {
+  void enterInlineControl(device.device_id, rect || readDeviceTwinRect(device.device_id))
 }
 
 function goToControl(deviceId: string) {
@@ -850,15 +973,35 @@ function goToControl(deviceId: string) {
 
 async function leaveInlineControl() {
   const deviceId = controlModeDeviceId.value
+  const device = controlModeDevice.value
+  const startRect = readTwinRect('.dashboard-control-twin__model')
+  if (startRect && !prefersReducedMotion()) {
+    prepareTwinFlight(startRect, device, 'return')
+  }
   returningDeviceId.value = deviceId
   controlContentVisible.value = false
   await nextTick()
-  await runSamePageTransition(async () => {
+  const updateToDashboardMode = async () => {
     controlModeDeviceId.value = ''
     await nextTick()
     initChart()
     updateChart()
-  })
+  }
+  const shouldUseTwinFlight = Boolean(startRect && !prefersReducedMotion())
+  const usedNativeTransition = shouldUseTwinFlight
+    ? false
+    : await runSamePageTransition(updateToDashboardMode)
+  if (shouldUseTwinFlight) {
+    await updateToDashboardMode()
+  }
+  if (!usedNativeTransition) {
+    await nextTick()
+    await animateTwinFlight(startRect, readDeviceTwinRect(deviceId))
+    finishTwinFlight()
+  } else {
+    finishTwinFlight()
+  }
+
   returningDeviceId.value = ''
 }
 
@@ -955,6 +1098,7 @@ onMounted(() => {
 })
 
 onUnmounted(() => {
+  window.clearTimeout(twinFlightCleanupTimer)
   ws.disconnect()
   if (chart) {
     chart.dispose()
@@ -1854,6 +1998,38 @@ onUnmounted(() => {
   will-change: transform, opacity;
 }
 
+.dashboard-control-twin__model--flight-hidden {
+  opacity: 0;
+}
+
+.dashboard-twin-flight {
+  position: fixed;
+  top: 0;
+  left: 0;
+  z-index: 80;
+  pointer-events: none;
+  transform-origin: top left;
+  will-change: transform, opacity, filter;
+  contain: layout paint style;
+  opacity: 0.78;
+  filter: blur(0.8px) saturate(1.08);
+  transform: var(--twin-flight-from, translate3d(0, 0, 0));
+}
+
+.dashboard-twin-flight--playing {
+  animation: twin-flight-run 1050ms cubic-bezier(0.34, 0, 0.18, 1) both;
+}
+
+.dashboard-twin-flight :deep(.digital-twin) {
+  --twin-size: 100%;
+  width: 100%;
+  height: 100%;
+}
+
+.dashboard-twin-flight--return :deep(.digital-twin__label) {
+  opacity: 0.72;
+}
+
 .dashboard-control-metrics {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
@@ -1935,6 +2111,23 @@ onUnmounted(() => {
   }
 }
 
+@keyframes twin-flight-run {
+  0% {
+    opacity: 0.78;
+    filter: blur(0.8px) saturate(1.08);
+    transform: var(--twin-flight-from, translate3d(0, 0, 0));
+  }
+  58% {
+    opacity: 1;
+    filter: blur(0.12px) saturate(1.18);
+  }
+  100% {
+    opacity: var(--twin-flight-end-opacity, 1);
+    filter: blur(0) saturate(1);
+    transform: var(--twin-flight-to, translate3d(0, 0, 0));
+  }
+}
+
 @keyframes twin-platform-turn {
   from { transform: rotate(0deg); }
   to { transform: rotate(360deg); }
@@ -1976,6 +2169,10 @@ onUnmounted(() => {
     animation: none !important;
     filter: none !important;
     transform: none !important;
+    opacity: 1 !important;
+  }
+
+  .dashboard-control-twin__model--flight-hidden {
     opacity: 1 !important;
   }
 }

@@ -6,6 +6,7 @@
       'device-overview-card--offline': isOffline,
       'device-overview-card--launching': launching,
       'device-overview-card--muted': muted,
+      'device-overview-card--twin-hidden': twinHidden,
     }"
     @click="handleClick"
   >
@@ -66,6 +67,7 @@ const props = defineProps<{
   launching?: boolean
   muted?: boolean
   transitionName?: string
+  twinHidden?: boolean
 }>()
 
 const emit = defineEmits<{
@@ -204,6 +206,10 @@ function handleClick(event: MouseEvent) {
 
 .device-overview-card--launching .device-overview-card__twin {
   transform: translate(36px, -8px) scale(1.32);
+}
+
+.device-overview-card--twin-hidden .device-overview-card__twin {
+  opacity: 0;
 }
 
 .device-overview-card__name {
