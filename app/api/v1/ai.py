@@ -1,7 +1,8 @@
 from collections import defaultdict
-from datetime import datetime, timedelta, timezone
+import json
+import re
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Query
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -11,8 +12,130 @@ from app.models.device import Device
 from app.models.sensor_data import SensorData
 from app.models.user import User
 from app.schemas.base import ApiResponse
+from app.services import llm_service
 
 router = APIRouter(prefix="/ai", tags=["AI 分析"])
+
+LLM_ERROR_CODE = 5001
+
+
+def _extract_json_object(text: str) -> dict | None:
+    """Extract a JSON object from plain or markdown-fenced LLM output."""
+    cleaned = text.strip()
+    fenced = re.search(r"```(?:json)?\s*(\{.*?\})\s*```", cleaned, re.DOTALL)
+    if fenced:
+        cleaned = fenced.group(1)
+    else:
+        start = cleaned.find("{")
+        end = cleaned.rfind("}")
+        if start >= 0 and end > start:
+            cleaned = cleaned[start:end + 1]
+
+    try:
+        parsed = json.loads(cleaned)
+    except json.JSONDecodeError:
+        return None
+    return parsed if isinstance(parsed, dict) else None
+
+
+def _sensor_snapshot(record: SensorData | None) -> dict:
+    if record is None:
+        return {"status": "no_data"}
+
+    return {
+        "temperature": record.temperature,
+        "humidity": record.humidity,
+        "illuminance": record.illuminance,
+        "aqi": record.aqi,
+        "pm25": record.pm25,
+        "tvoc": record.tvoc,
+        "eco2": record.eco2,
+        "mold_risk": record.mold_risk,
+        "gas": record.gas,
+        "wifi_rssi": record.wifi_rssi,
+        "timestamp": record.timestamp.isoformat() if record.timestamp else None,
+    }
+
+
+def _normalize_llm_suggestions(parsed: dict) -> dict | None:
+    raw_items = parsed.get("suggestions")
+    if not isinstance(raw_items, list):
+        return None
+
+    icon_aliases = {
+        "co2": "eco2",
+        "carbon": "eco2",
+        "wifi": "i",
+        "wifi_rssi": "i",
+    }
+    allowed_icons = {"i", "light", "wind", "water", "temp", "aqi", "tvoc", "eco2", "mold", "gas", "ok"}
+    suggestions = []
+    for item in raw_items[:5]:
+        if not isinstance(item, dict):
+            continue
+        title = str(item.get("title") or "").strip()
+        desc = str(item.get("desc") or item.get("description") or "").strip()
+        icon = str(item.get("icon") or "i").strip().lower()
+        icon = icon.split("|", 1)[0]
+        icon = icon_aliases.get(icon, icon)
+        if icon not in allowed_icons:
+            icon = "i"
+        if title and desc:
+            suggestions.append({"icon": icon, "title": title, "desc": desc})
+
+    if not suggestions:
+        return None
+
+    return {
+        "suggestions": suggestions,
+        "source": "llm",
+    }
+
+
+def _normalize_llm_weekly_report(parsed: dict, fallback_days: list[dict]) -> dict | None:
+    summary = str(parsed.get("summary") or "").strip()
+    raw_days = parsed.get("days")
+    days = fallback_days
+
+    if isinstance(raw_days, list):
+        normalized_days = []
+        for item in raw_days[:7]:
+            if not isinstance(item, dict):
+                continue
+            date = str(item.get("date") or "").strip()
+            if not date:
+                continue
+            normalized_days.append({
+                "date": date,
+                "temperature": item.get("temperature"),
+                "humidity": item.get("humidity"),
+                "aqi": item.get("aqi"),
+                "sample_count": item.get("sample_count") or 0,
+            })
+        if normalized_days:
+            days = normalized_days
+
+    if not summary:
+        return None
+
+    return {
+        "days": days,
+        "summary": summary,
+        "source": "llm",
+    }
+
+
+async def _ask_llm_json(prompt: str) -> dict | None:
+    result = await llm_service.chat(
+        prompt,
+        system=(
+            "你是智能桌面魔方的环境分析助手。"
+            "必须只返回合法 JSON，不要 Markdown，不要解释，不要额外文本。"
+        ),
+    )
+    if not result:
+        return None
+    return _extract_json_object(result)
 
 
 async def _verify_device_ownership(device_id: str, user_id: int, db: AsyncSession):
@@ -168,7 +291,28 @@ def _build_suggestions(record: SensorData | None):
     if not suggestions:
         suggestions.append({"icon": "ok", "title": "环境状态良好", "desc": "当前环境指标比较稳定，继续保持。"})
 
-    return {"suggestions": suggestions}
+    return {"suggestions": suggestions, "source": "rule"}
+
+
+def _build_weekly_days(records: list[SensorData]) -> list[dict]:
+    grouped = defaultdict(list)
+    for record in records:
+        grouped[record.timestamp.date().isoformat()].append(record)
+
+    days = []
+    for day, items in sorted(grouped.items()):
+        def avg(field: str):
+            values = [getattr(item, field) for item in items if getattr(item, field) is not None]
+            return round(sum(values) / len(values), 1) if values else None
+
+        days.append({
+            "date": day,
+            "temperature": avg("temperature"),
+            "humidity": avg("humidity"),
+            "aqi": avg("aqi"),
+            "sample_count": len(items),
+        })
+    return days
 
 
 @router.get("/{device_id}/score", response_model=ApiResponse)
@@ -204,6 +348,7 @@ async def get_risk_warnings(
 @router.get("/{device_id}/suggestions", response_model=ApiResponse)
 async def get_ai_suggestions(
     device_id: str,
+    force_llm: bool = Query(False),
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
@@ -213,12 +358,35 @@ async def get_ai_suggestions(
         return ApiResponse(code=3002, message="设备未绑定", data=None)
 
     record = await _get_latest_sensor_data(device_id, db)
-    return ApiResponse(data=_build_suggestions(record))
+    rule_data = _build_suggestions(record)
+    if not force_llm:
+        return ApiResponse(data=rule_data)
+
+    prompt = (
+        "请基于以下智能桌面魔方传感器数据生成 3-5 条具体环境优化建议。"
+        "返回 JSON 格式："
+        '{"suggestions":[{"icon":"wind|water|temp|light|aqi|tvoc|eco2|mold|gas|ok",'
+        '"title":"短标题","desc":"一句可执行建议"}]}。'
+        f"\n设备ID：{device_id}"
+        f"\n传感器数据：{json.dumps(_sensor_snapshot(record), ensure_ascii=False)}"
+        f"\n规则引擎参考：{json.dumps(rule_data, ensure_ascii=False)}"
+    )
+    parsed = await _ask_llm_json(prompt)
+    llm_data = _normalize_llm_suggestions(parsed or {})
+    if not llm_data:
+        return ApiResponse(
+            code=LLM_ERROR_CODE,
+            message="LLM 未返回有效建议结果，请确认本地 Ollama 正在运行且模型可用。",
+            data=rule_data,
+        )
+
+    return ApiResponse(data=llm_data)
 
 
 @router.get("/{device_id}/weekly-report", response_model=ApiResponse)
 async def get_weekly_report(
     device_id: str,
+    force_llm: bool = Query(False),
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
@@ -227,30 +395,35 @@ async def get_weekly_report(
     if not device:
         return ApiResponse(code=3002, message="设备未绑定", data=None)
 
-    since = datetime.now(timezone.utc) - timedelta(days=7)
     result = await db.execute(
         select(SensorData)
-        .where(SensorData.device_id == device_id, SensorData.timestamp >= since)
-        .order_by(SensorData.timestamp.asc())
+        .where(SensorData.device_id == device_id)
+        .order_by(SensorData.timestamp.desc())
+        .limit(7 * 24 * 60)
     )
-    records = result.scalars().all()
+    records = list(reversed(result.scalars().all()))
 
-    grouped = defaultdict(list)
-    for record in records:
-        grouped[record.timestamp.date().isoformat()].append(record)
+    days = _build_weekly_days(records)
+    rule_data = {"days": days, "summary": "", "source": "rule"}
+    if not force_llm:
+        return ApiResponse(data=rule_data)
 
-    days = []
-    for day, items in grouped.items():
-        def avg(field: str):
-            values = [getattr(item, field) for item in items if getattr(item, field) is not None]
-            return round(sum(values) / len(values), 1) if values else None
+    prompt = (
+        "请基于最近 7 天环境数据生成智能桌面魔方周报摘要。"
+        "返回 JSON 格式："
+        '{"summary":"80字以内中文总结，包含趋势和建议","days":[{"date":"YYYY-MM-DD",'
+        '"temperature":数字或null,"humidity":数字或null,"aqi":数字或null,"sample_count":数字}]}。'
+        "days 可以直接沿用输入数据。"
+        f"\n设备ID：{device_id}"
+        f"\n最近7天聚合数据：{json.dumps(days, ensure_ascii=False)}"
+    )
+    parsed = await _ask_llm_json(prompt)
+    llm_data = _normalize_llm_weekly_report(parsed or {}, days)
+    if not llm_data:
+        return ApiResponse(
+            code=LLM_ERROR_CODE,
+            message="LLM 未返回有效周报结果，请确认本地 Ollama 正在运行且模型可用。",
+            data=rule_data,
+        )
 
-        days.append({
-            "date": day,
-            "temperature": avg("temperature"),
-            "humidity": avg("humidity"),
-            "aqi": avg("aqi"),
-            "sample_count": len(items),
-        })
-
-    return ApiResponse(data={"days": days})
+    return ApiResponse(data=llm_data)

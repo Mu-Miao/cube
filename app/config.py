@@ -4,6 +4,10 @@
 
 from pydantic_settings import BaseSettings
 from typing import List
+from pathlib import Path
+
+
+BACKEND_DIR = Path(__file__).resolve().parents[1]
 
 
 class Settings(BaseSettings):
@@ -61,9 +65,22 @@ class Settings(BaseSettings):
     WEATHER_API_KEY: str = ""
     WECHAT_WEBHOOK_URL: str = ""
 
+    # === LLM 配置 ===
+    # off/api/local/auto；auto 优先本地模型，失败后回退云端 API。
+    LLM_MODE: str = "off"
+    LLM_API_BASE_URL: str = ""
+    LLM_API_KEY: str = ""
+    LLM_API_MODEL: str = ""
+    LLM_LOCAL_BASE_URL: str = "http://localhost:11434/v1"
+    LLM_LOCAL_MODEL: str = "qwen2.5:3b"
+    LLM_TIMEOUT: int = 120
+    LLM_LOCAL_TIMEOUT: int = 120
+    LLM_TEMPERATURE: float = 0.7
+    LLM_MAX_TOKENS: int = 1024
+
     class Config:
         # 从 .env 文件加载配置
-        env_file = ".env"
+        env_file = BACKEND_DIR / ".env"
         env_file_encoding = "utf-8"
         case_sensitive = True
 

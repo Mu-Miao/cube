@@ -71,6 +71,7 @@ async def ensure_demo_schema(db: AsyncSession) -> None:
 
     await _add_column_if_missing(db, "sensor_data", "illuminance", "DOUBLE")
     await _add_column_if_missing(db, "sensor_data", "aqi", "DOUBLE")
+    await _add_column_if_missing(db, "sensor_data", "pm25", "DOUBLE")
     await _add_column_if_missing(db, "sensor_data", "tvoc", "DOUBLE")
     await _add_column_if_missing(db, "sensor_data", "eco2", "DOUBLE")
     await _add_column_if_missing(db, "sensor_data", "mold_risk", "DOUBLE")
@@ -141,6 +142,7 @@ def _normal_record(device_id: str, timestamp: datetime, index: int) -> SensorDat
         humidity=round(52 + math.cos(index / 6) * 8, 1),
         illuminance=round(420 + max(0, math.sin(index / 4)) * 260, 1),
         aqi=round(38 + max(0, math.sin(index / 7)) * 30, 1),
+        pm25=round(12 + max(0, math.sin(index / 7)) * 18, 1),
         tvoc=round(120 + max(0, math.sin(index / 8)) * 90, 1),
         eco2=round(520 + max(0, math.sin(index / 6)) * 180, 1),
         mold_risk=0 if index % 9 else 1,
@@ -160,6 +162,7 @@ def _risk_record(device_id: str, timestamp: datetime, index: int) -> SensorData:
         humidity=round(66 + pressure * 10, 1),
         illuminance=round(240 + pressure * 130, 1),
         aqi=round(95 + pressure * 70, 1),
+        pm25=round(36 + pressure * 54, 1),
         tvoc=round(460 + pressure * 520, 1),
         eco2=round(950 + pressure * 900, 1),
         mold_risk=3 if is_latest_window else 2,
@@ -177,6 +180,7 @@ def _offline_record(device_id: str, timestamp: datetime, index: int) -> SensorDa
         humidity=round(45 + math.cos(index / 6) * 4, 1),
         illuminance=180,
         aqi=55,
+        pm25=18,
         tvoc=180,
         eco2=620,
         mold_risk=1,

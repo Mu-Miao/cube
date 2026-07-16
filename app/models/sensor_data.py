@@ -33,6 +33,8 @@ class SensorData(BaseModel):
     illuminance: Mapped[float | None] = mapped_column(Double, nullable=True)
     # 空气质量指数（数值越小越好）
     aqi: Mapped[float | None] = mapped_column(Double, nullable=True)
+    # PM2.5 浓度（μg/m³），当前设备侧为机器学习估算值
+    pm25: Mapped[float | None] = mapped_column(Double, nullable=True)
     # 有机挥发物浓度（TVOC，甲醛/异味等效）
     tvoc: Mapped[float | None] = mapped_column(Double, nullable=True)
     # CO₂ 等效浓度（ppm）

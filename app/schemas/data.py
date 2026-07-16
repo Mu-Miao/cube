@@ -17,6 +17,7 @@ class SensorDataPayload(BaseModel):
     humidity: float = Field(..., description="湿度（%RH）")
     illuminance: float = Field(..., description="光照强度（lx）")
     aqi: float = Field(..., description="空气质量指数")
+    pm25: Optional[float] = Field(None, description="PM2.5 浓度（μg/m³，机器学习估算值，仅供参考）")
     tvoc: float = Field(..., description="有机挥发物浓度")
     eco2: float = Field(..., description="CO₂ 等效浓度（ppm）")
     mold_risk: float = Field(..., description="霉菌风险等级（0-3）")
@@ -56,12 +57,14 @@ class DeviceDataReport(BaseModel):
         nested_status = payload.get("status")
         if isinstance(nested_sensor_data, dict):
             normalized = values.copy()
-            normalized["data"] = nested_sensor_data
+            normalized["data"] = _normalize_pm25_key(nested_sensor_data)
             if normalized.get("status") is None and isinstance(nested_status, dict):
                 normalized["status"] = nested_status
             return normalized
 
-        return values
+        normalized = values.copy()
+        normalized["data"] = _normalize_pm25_key(payload)
+        return normalized
 
 
 class DataUploadAck(BaseModel):
@@ -84,6 +87,7 @@ class SensorDataHistoryItem(BaseModel):
     humidity: Optional[float] = None
     illuminance: Optional[float] = None
     aqi: Optional[float] = None
+    pm25: Optional[float] = None
     tvoc: Optional[float] = None
     eco2: Optional[float] = None
     mold_risk: Optional[float] = None
@@ -105,6 +109,7 @@ class SensorDataLatest(BaseModel):
     humidity: Optional[float] = None
     illuminance: Optional[float] = None
     aqi: Optional[float] = None
+    pm25: Optional[float] = None
     tvoc: Optional[float] = None
     eco2: Optional[float] = None
     mold_risk: Optional[float] = None
@@ -115,3 +120,13 @@ class SensorDataLatest(BaseModel):
 
     class Config:
         from_attributes = True
+
+
+def _normalize_pm25_key(data: dict) -> dict:
+    normalized = data.copy()
+    if normalized.get("pm25") is None:
+        for key in ("pm2_5", "pm2.5", "PM2.5", "pm25_estimated"):
+            if normalized.get(key) is not None:
+                normalized["pm25"] = normalized[key]
+                break
+    return normalized

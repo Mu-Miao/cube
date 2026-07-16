@@ -5,6 +5,7 @@
 import os
 from pathlib import Path
 
+from sqlalchemy import text
 from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession, async_sessionmaker
 from sqlalchemy.orm import DeclarativeBase
 
@@ -77,3 +78,8 @@ async def init_db():
 
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
+        if settings.DATABASE_URL.startswith("sqlite"):
+            columns = await conn.execute(text("PRAGMA table_info(sensor_data)"))
+            column_names = {row[1] for row in columns}
+            if "pm25" not in column_names:
+                await conn.execute(text("ALTER TABLE sensor_data ADD COLUMN pm25 DOUBLE"))

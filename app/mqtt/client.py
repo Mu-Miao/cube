@@ -2,7 +2,9 @@
 # MQTT 异步客户端
 # 实现与硬件设备的 MQTT 通信连接、订阅、消息收发
 
+import asyncio
 import json
+import uuid
 from contextlib import asynccontextmanager
 
 from loguru import logger
@@ -18,7 +20,7 @@ class MQTTClient:
     如果未部署 MQTT Broker，设备可通过 HTTP 接口接入
 
     功能：
-      - 连接到 MQTT Broker
+      - 连接到 MQTT Broker（自动重连）
       - 订阅设备消息（状态、数据、确认）
       - 向设备发送消息（控制指令、ACK 响应）
     """
@@ -27,10 +29,11 @@ class MQTTClient:
         self._client = None  # aiomqtt.Client 实例
         self._running = False
         self._message_handler = None  # 消息处理回调函数
+        self._client_id = f"cube-backend-{uuid.uuid4().hex[:8]}"
 
     async def connect(self, message_handler=None) -> None:
         """
-        连接到 MQTT Broker 并开始监听消息
+        连接到 MQTT Broker 并开始监听消息（支持自动重连）
 
         Args:
             message_handler: 异步回调函数，接收 (topic, payload) 参数
@@ -42,35 +45,59 @@ class MQTTClient:
             return
 
         self._message_handler = message_handler
-        try:
-            # 构建连接参数
-            connect_kwargs = {
-                "hostname": settings.MQTT_BROKER_URL,
-                "port": settings.MQTT_BROKER_PORT,
-            }
-            if settings.MQTT_USERNAME:
-                connect_kwargs["username"] = settings.MQTT_USERNAME
-                connect_kwargs["password"] = settings.MQTT_PASSWORD
+        self._running = True
+        retry_delay = 2  # 初始重连间隔（秒）
+        max_retry_delay = 60  # 最大重连间隔
 
-            self._client = aiomqtt.Client(**connect_kwargs)
-            await self._client.__aenter__()
-            self._running = True
+        while True:
+            if not self._running:
+                break
+            try:
+                # 构建连接参数
+                connect_kwargs = {
+                    "hostname": settings.MQTT_BROKER_URL,
+                    "port": settings.MQTT_BROKER_PORT,
+                    "identifier": self._client_id,
+                    "keepalive": 30,  # 30 秒心跳保活
+                }
+                if settings.MQTT_USERNAME:
+                    connect_kwargs["username"] = settings.MQTT_USERNAME
+                    connect_kwargs["password"] = settings.MQTT_PASSWORD
 
-            # 订阅所有设备主题（通配符订阅）
-            await self._client.subscribe(SUBSCRIBE_ALL_STATUS)
-            await self._client.subscribe(SUBSCRIBE_ALL_DATA)
-            await self._client.subscribe(SUBSCRIBE_ALL_ACK)
+                self._client = aiomqtt.Client(**connect_kwargs)
+                await self._client.__aenter__()
 
-            logger.info(f"MQTT 已连接: {settings.MQTT_BROKER_URL}:{settings.MQTT_BROKER_PORT}")
+                # 订阅所有设备主题（通配符订阅）
+                await self._client.subscribe(SUBSCRIBE_ALL_STATUS)
+                await self._client.subscribe(SUBSCRIBE_ALL_DATA)
+                await self._client.subscribe(SUBSCRIBE_ALL_ACK)
 
-            # 启动消息监听循环
-            async for message in self._client.messages:
-                if self._message_handler and self._running:
-                    await self._message_handler(str(message.topic), message.payload)
+                logger.info(f"MQTT 已连接: {settings.MQTT_BROKER_URL}:{settings.MQTT_BROKER_PORT}")
+                retry_delay = 2  # 连接成功，重置重连间隔
 
-        except Exception as e:
-            logger.error(f"MQTT 连接失败: {e}")
-            self._running = False
+                # 启动消息监听循环
+                async for message in self._client.messages:
+                    if self._message_handler and self._running:
+                        await self._message_handler(str(message.topic), message.payload)
+
+            except asyncio.CancelledError:
+                logger.info("MQTT 连接任务被取消")
+                break
+            except Exception as e:
+                logger.warning(f"MQTT 连接断开: {e}")
+
+            # 清理当前连接
+            if self._client:
+                try:
+                    await self._client.__aexit__(None, None, None)
+                except Exception:
+                    pass
+                self._client = None
+
+            if self._running:
+                logger.info(f"MQTT 将在 {retry_delay}s 后重连...")
+                await asyncio.sleep(retry_delay)
+                retry_delay = min(retry_delay * 1.5, max_retry_delay)
 
     async def publish(self, topic: str, payload: bytes) -> None:
         """

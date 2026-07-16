@@ -17,6 +17,16 @@ from app.websocket.manager import ws_manager
 from app.services.alert_service import check_alerts
 
 
+def _normalize_pm25_key(sensor_data: dict) -> dict:
+    normalized = sensor_data.copy()
+    if normalized.get("pm25") is None:
+        for key in ("pm2_5", "pm2.5", "PM2.5", "pm25_estimated"):
+            if normalized.get(key) is not None:
+                normalized["pm25"] = normalized[key]
+                break
+    return normalized
+
+
 async def handle_mqtt_message(topic: str, payload: bytes) -> None:
     """
     MQTT 消息统一入口
@@ -162,6 +172,7 @@ async def _handle_data_report(device_id: str, data: dict) -> None:
     else:
         sensor_data = payload if isinstance(payload, dict) else {}
         status_data = data.get("status", {})
+    sensor_data = _normalize_pm25_key(sensor_data)
 
     async with async_session_factory() as db:
         from sqlalchemy import select
@@ -206,6 +217,7 @@ async def _handle_data_report(device_id: str, data: dict) -> None:
             humidity=sensor_data.get("humidity"),
             illuminance=sensor_data.get("illuminance"),
             aqi=sensor_data.get("aqi"),
+            pm25=sensor_data.get("pm25"),
             tvoc=sensor_data.get("tvoc"),
             eco2=sensor_data.get("eco2"),
             mold_risk=sensor_data.get("mold_risk"),

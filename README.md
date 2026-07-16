@@ -134,18 +134,18 @@ python scripts/seed_demo.py --yes
 
 脚本会创建/更新以下账号，并刷新 `DEMO-CUBE-*` 演示设备、7 天历史数据、最近实时数据、操作日志和语音日志：
 
-| 账号 | 密码 | 角色 |
-|------|------|------|
-| `demo` | `demo123456` | 普通用户 |
-| `admin` | `demo123456` | 管理员 |
+| 账号      | 密码           | 角色   |
+| ------- | ------------ | ---- |
+| `demo`  | `demo123456` | 普通用户 |
+| `admin` | `demo123456` | 管理员  |
 
 演示设备：
 
-| 设备 ID | 名称 | 状态 | 用途 |
-|--------|------|------|------|
-| `DEMO-CUBE-001` | 魔方终端-客厅 | 在线 | 正常环境数据 |
-| `DEMO-CUBE-002` | 魔方终端-书桌 | 在线 | 高风险数据，用于展示 AI 风险预警 |
-| `DEMO-CUBE-003` | 魔方终端-卧室 | 离线 | 离线设备状态展示 |
+| 设备 ID           | 名称      | 状态  | 用途                 |
+| --------------- | ------- | --- | ------------------ |
+| `DEMO-CUBE-001` | 魔方终端-客厅 | 在线  | 正常环境数据             |
+| `DEMO-CUBE-002` | 魔方终端-书桌 | 在线  | 高风险数据，用于展示 AI 风险预警 |
+| `DEMO-CUBE-003` | 魔方终端-卧室 | 离线  | 离线设备状态展示           |
 
 ### 运行测试
 
@@ -163,29 +163,29 @@ python -m pytest tests/
 
 ### 认证
 
-| 方法 | 路径 | 说明 |
-|------|------|------|
+| 方法   | 路径                      | 说明   |
+| ---- | ----------------------- | ---- |
 | POST | `/api/v1/auth/register` | 用户注册 |
-| POST | `/api/v1/auth/login` | 用户登录 |
+| POST | `/api/v1/auth/login`    | 用户登录 |
 
 ### 设备管理
 
-| 方法 | 路径 | 说明 |
-|------|------|------|
-| POST | `/api/v1/device/auth` | 设备握手 |
-| POST | `/api/v1/device/{device_id}/heartbeat` | 设备心跳 |
-| POST | `/api/v1/device/bind` | 绑定设备 |
-| POST | `/api/v1/device/unbind` | 解绑设备 |
-| GET | `/api/v1/device/list` | 设备列表 |
-| PUT | `/api/v1/device/{device_id}/rename` | 重命名设备 |
+| 方法   | 路径                                     | 说明    |
+| ---- | -------------------------------------- | ----- |
+| POST | `/api/v1/device/auth`                  | 设备握手  |
+| POST | `/api/v1/device/{device_id}/heartbeat` | 设备心跳  |
+| POST | `/api/v1/device/bind`                  | 绑定设备  |
+| POST | `/api/v1/device/unbind`                | 解绑设备  |
+| GET  | `/api/v1/device/list`                  | 设备列表  |
+| PUT  | `/api/v1/device/{device_id}/rename`    | 重命名设备 |
 
 ### 传感器数据
 
-| 方法 | 路径 | 说明 |
-|------|------|------|
-| POST | `/api/v1/data/upload` | 数据上报（设备侧） |
-| GET | `/api/v1/data/{device_id}/latest` | 最新数据 |
-| GET | `/api/v1/data/{device_id}/history` | 历史数据 |
+| 方法   | 路径                                 | 说明        |
+| ---- | ---------------------------------- | --------- |
+| POST | `/api/v1/data/upload`              | 数据上报（设备侧） |
+| GET  | `/api/v1/data/{device_id}/latest`  | 最新数据      |
+| GET  | `/api/v1/data/{device_id}/history` | 历史数据      |
 
 设备数据上报同时兼容两种 JSON 结构：
 
@@ -247,38 +247,38 @@ python -m pytest tests/
 
 ### 设备控制
 
-| 方法 | 路径 | 说明 |
-|------|------|------|
-| POST | `/api/v1/control/{device_id}` | 下发控制指令 |
-| GET | `/api/v1/control/{device_id}/pull` | 设备拉取指令 |
-| POST | `/api/v1/control/{device_id}/ack` | 执行结果通知 |
+| 方法   | 路径                                 | 说明     |
+| ---- | ---------------------------------- | ------ |
+| POST | `/api/v1/control/{device_id}`      | 下发控制指令 |
+| GET  | `/api/v1/control/{device_id}/pull` | 设备拉取指令 |
+| POST | `/api/v1/control/{device_id}/ack`  | 执行结果通知 |
 
 ### 日志
 
-| 方法 | 路径 | 说明 |
-|------|------|------|
-| GET | `/api/v1/log/operation` | 查询操作日志 |
-| GET | `/api/v1/log/voice` | 查询语音日志 |
-| POST | `/api/v1/log/voice` | 创建语音日志 |
+| 方法   | 路径                      | 说明     |
+| ---- | ----------------------- | ------ |
+| GET  | `/api/v1/log/operation` | 查询操作日志 |
+| GET  | `/api/v1/log/voice`     | 查询语音日志 |
+| POST | `/api/v1/log/voice`     | 创建语音日志 |
 
 ### 管理员
 
-| 方法 | 路径 | 说明 |
-|------|------|------|
-| GET | `/api/v1/admin/users` | 用户列表 |
-| PUT | `/api/v1/admin/users/{user_id}/status` | 启用/禁用用户 |
-| GET | `/api/v1/admin/devices` | 设备列表 |
-| DELETE | `/api/v1/admin/devices/{device_id}` | 强制删除设备 |
-| GET | `/api/v1/admin/stats` | 系统统计 |
+| 方法     | 路径                                     | 说明      |
+| ------ | -------------------------------------- | ------- |
+| GET    | `/api/v1/admin/users`                  | 用户列表    |
+| PUT    | `/api/v1/admin/users/{user_id}/status` | 启用/禁用用户 |
+| GET    | `/api/v1/admin/devices`                | 设备列表    |
+| DELETE | `/api/v1/admin/devices/{device_id}`    | 强制删除设备  |
+| GET    | `/api/v1/admin/stats`                  | 系统统计    |
 
 ### AI 分析
 
-| 方法 | 路径 | 说明 |
-|------|------|------|
-| GET | `/api/v1/ai/{device_id}/score` | 环境综合评分 |
-| GET | `/api/v1/ai/{device_id}/risks` | 风险预警 |
-| GET | `/api/v1/ai/{device_id}/suggestions` | AI 建议 |
-| GET | `/api/v1/ai/{device_id}/weekly-report` | 周报数据 |
+| 方法  | 路径                                     | 说明     |
+| --- | -------------------------------------- | ------ |
+| GET | `/api/v1/ai/{device_id}/score`         | 环境综合评分 |
+| GET | `/api/v1/ai/{device_id}/risks`         | 风险预警   |
+| GET | `/api/v1/ai/{device_id}/suggestions`   | AI 建议  |
+| GET | `/api/v1/ai/{device_id}/weekly-report` | 周报数据   |
 
 ### WebSocket
 
@@ -292,10 +292,10 @@ python -m pytest tests/
 
 前端仓库位于同级目录 `../tianmu`，默认通过以下地址连接后端：
 
-| 项目 | 默认值 |
-|------|--------|
-| REST API | `http://localhost:8000/api/v1` |
-| WebSocket | `ws://localhost:8000/ws` |
+| 项目        | 默认值                            |
+| --------- | ------------------------------ |
+| REST API  | `http://localhost:8000/api/v1` |
+| WebSocket | `ws://localhost:8000/ws`       |
 
 前端 `.env` 示例：
 
@@ -308,37 +308,25 @@ VITE_WS_BASE_URL=ws://localhost:8000
 
 ## 告警阈值
 
-| 指标 | 警告阈值 | 严重阈值 |
-|------|----------|----------|
-| 燃气 (gas) | 0.5 | 1.0 |
-| TVOC | 0.5 mg/m³ | 1.0 mg/m³ |
-| CO₂ (eco2) | 1000 ppm | 2000 ppm |
-| 霉菌风险 (mold_risk) | 2 | 3 |
+| 指标               | 警告阈值      | 严重阈值      |
+| ---------------- | --------- | --------- |
+| TVOC             | 0.5 mg/m³ | 1.0 mg/m³ |
+| CO₂ (eco2)       | 1000 ppm  | 2000 ppm  |
+| 霉菌风险 (mold_risk) | 2         | 3         |
 
 ## 环境变量
 
-| 变量 | 默认值 | 说明 |
-|------|--------|------|
-| `DEBUG` | `true` | 调试模式 |
-| `SECRET_KEY` | - | JWT 签名密钥 |
-| `DATABASE_URL` | `sqlite+aiosqlite:///./data/cube.db` | 数据库连接 |
-| `MQTT_BROKER_URL` | `broker.emqx.io` | MQTT Broker |
-| `MQTT_BROKER_PORT` | `1883` | MQTT 端口 |
-| `DATA_RETENTION_DAYS` | `30` | 数据保留天数 |
-| `TTS_API_URL` | 空 | 语音合成 API |
-| `WEATHER_API_URL` | 空 | 天气 API |
-| `WECHAT_WEBHOOK_URL` | 空 | 企业微信 Webhook |
-
-## 后续待办
-
-| 优先级 | 事项 | 说明 |
-|--------|------|------|
-| 高 | 硬件实机联调 | ESP32-S3 完成握手、心跳、数据上报、控制轮询、ACK 回传 |
-| 高 | MQTT 链路实测 | 用真实 Broker 和硬件消息验证 topic、payload、异常处理 |
-| 中 | 告警持久化 | 将告警事件保存为独立记录或日志，支持前端告警中心 |
-| 中 | 第三方服务联调 | TTS、天气、企业微信推送目前有服务结构，还需要接真实服务 |
-| 中 | Alembic 迁移 | 表结构稳定后补充正式数据库迁移脚本 |
-| 中 | Docker 部署验证 | 确认本地、服务器、竞赛现场环境均可稳定启动 |
+| 变量                    | 默认值                                  | 说明           |
+| --------------------- | ------------------------------------ | ------------ |
+| `DEBUG`               | `true`                               | 调试模式         |
+| `SECRET_KEY`          | -                                    | JWT 签名密钥     |
+| `DATABASE_URL`        | `sqlite+aiosqlite:///./data/cube.db` | 数据库连接        |
+| `MQTT_BROKER_URL`     | `broker.emqx.io`                     | MQTT Broker  |
+| `MQTT_BROKER_PORT`    | `1883`                               | MQTT 端口      |
+| `DATA_RETENTION_DAYS` | `30`                                 | 数据保留天数       |
+| `TTS_API_URL`         | 空                                    | 语音合成 API     |
+| `WEATHER_API_URL`     | 空                                    | 天气 API       |
+| `WECHAT_WEBHOOK_URL`  | 空                                    | 企业微信 Webhook |
 
 ## 仓库说明
 

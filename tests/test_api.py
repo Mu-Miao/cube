@@ -63,6 +63,7 @@ async def test_full_device_lifecycle(client: AsyncClient):
                 "humidity": 60.2,
                 "illuminance": 450,
                 "aqi": 75,
+                "pm25": 21.7,
                 "tvoc": 120,
                 "eco2": 520,
                 "mold_risk": 1,
@@ -83,6 +84,7 @@ async def test_full_device_lifecycle(client: AsyncClient):
     data = body["data"]
     assert data["temperature"] == 25.5
     assert data["humidity"] == 60.2
+    assert data["pm25"] == 21.7
 
     resp = await client.get("/api/v1/device/list", headers=headers)
     devices = resp.json()["data"]
@@ -162,6 +164,61 @@ async def test_control_command_flow(client: AsyncClient):
     assert body["data"]["pending"] is True
     assert body["data"]["command"] == "light"
     assert body["data"]["value"] == "on"
+
+    resp = await client.post(
+        f"/api/v1/control/{device_id}",
+        json={
+            "command": "color_temperature",
+            "value": "3000",
+        },
+        headers=headers,
+    )
+    assert resp.status_code == 200
+    assert resp.json()["message"] == "指令已下发"
+
+    resp = await client.post(
+        f"/api/v1/control/{device_id}",
+        json={
+            "command": "auto_screen_brightness",
+            "value": "on",
+        },
+        headers=headers,
+    )
+    assert resp.status_code == 200
+    assert resp.json()["message"] == "指令已下发"
+
+    resp = await client.get(
+        f"/api/v1/control/{device_id}/pull",
+        headers={"Authorization": f"Bearer {device_token}"},
+    )
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["code"] == 0
+    assert body["data"]["pending"] is True
+    assert body["data"]["command"] == "color_temperature"
+    assert body["data"]["value"] == "3000"
+
+    resp = await client.get(
+        f"/api/v1/control/{device_id}/pull",
+        headers={"Authorization": f"Bearer {device_token}"},
+    )
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["code"] == 0
+    assert body["data"]["pending"] is True
+    assert body["data"]["command"] == "auto_screen_brightness"
+    assert body["data"]["value"] == "on"
+
+    resp = await client.post(
+        f"/api/v1/control/{device_id}",
+        json={
+            "command": "buzzer",
+            "value": "on",
+        },
+        headers=headers,
+    )
+    assert resp.status_code == 200
+    assert resp.json()["code"] == 4001
 
 
 @pytest.mark.asyncio
@@ -292,6 +349,7 @@ async def test_data_upload_accepts_nested_hardware_payload(client: AsyncClient):
                     "humidity": 58.5,
                     "illuminance": 520,
                     "aqi": 42,
+                    "pm2.5": 18.6,
                     "tvoc": 160,
                     "eco2": 680,
                     "mold_risk": 0,
@@ -316,6 +374,7 @@ async def test_data_upload_accepts_nested_hardware_payload(client: AsyncClient):
     assert body["code"] == 0
     assert body["data"]["temperature"] == 26.8
     assert body["data"]["humidity"] == 58.5
+    assert body["data"]["pm25"] == 18.6
     assert body["data"]["focus_mode"] is True
     assert body["data"]["wifi_rssi"] is None
 

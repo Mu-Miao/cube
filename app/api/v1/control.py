@@ -25,6 +25,16 @@ router = APIRouter(prefix="/control", tags=["设备控制"])
 # MVP 使用内存队列，生产环境应替换为 Redis 或数据库持久化
 command_queue: dict[str, list[dict[str, Any]]] = {}
 
+SUPPORTED_CONTROL_COMMANDS = {
+    "light": "on/off（灯光开关）",
+    "color_temperature": "2700-6500（灯光色温，单位 K）",
+    "light_brightness": "0-100（灯光亮度）",
+    "wechat_notify": "on/off（微信消息通知）",
+    "auto_screen_brightness": "on/off（自动屏幕亮度）",
+    "focus_mode": "on/off（专注模式）",
+    "screen_brightness": "0-100（手动屏幕亮度）",
+}
+
 
 @router.post("/{device_id}", response_model=ApiResponse)
 async def send_control_command(
@@ -41,13 +51,12 @@ async def send_control_command(
 
     支持的指令：
       - light: on/off（灯光开关）
-      - light_color: red/green/blue/white（灯光颜色）
+      - color_temperature: 2700-6500（灯光色温，单位 K）
       - light_brightness: 0-100（灯光亮度）
-      - buzzer: on/off（蜂鸣器）
-      - relay_1: on/off（继电器 1）
-      - relay_2: on/off（继电器 2）
+      - wechat_notify: on/off（微信消息通知）
+      - auto_screen_brightness: on/off（自动屏幕亮度）
       - focus_mode: on/off（专注模式）
-      - screen_brightness: 0-100（屏幕亮度）
+      - screen_brightness: 0-100（手动屏幕亮度）
 
     流程：
     1. 验证设备是否绑定到当前用户
@@ -77,6 +86,9 @@ async def send_control_command(
     command = command_data.get("command", "")
     value = command_data.get("value", "")
     params = command_data.get("params", {})
+
+    if command not in SUPPORTED_CONTROL_COMMANDS:
+        return ApiResponse(code=4001, message=f"不支持的控制指令：{command}", data=None)
 
     # 将指令加入该设备的队列
     if device_id not in command_queue:
