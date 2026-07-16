@@ -15,24 +15,13 @@
         state="boot"
         title="小眠"
         message="正在等待你的桌面魔方上线。"
-        :metrics="[
-          { label: '控制台', value: 'READY' },
-          { label: '状态', value: 'SYNC' },
-          { label: '入口', value: 'MVP' },
-        ]"
       />
     </div>
     <div class="login-card">
       <!-- Logo + 页面标题 -->
       <div class="login-header">
         <div class="login-logo">
-          <svg viewBox="0 0 48 48" class="cube-icon" fill="none" xmlns="http://www.w3.org/2000/svg">
-            <!-- 简化魔方 SVG 图标 -->
-            <rect x="8" y="8" width="14" height="14" rx="2" fill="#06B6D4" opacity="0.9" />
-            <rect x="26" y="8" width="14" height="14" rx="2" fill="#22D3EE" opacity="0.7" />
-            <rect x="8" y="26" width="14" height="14" rx="2" fill="#0891B2" opacity="0.7" />
-            <rect x="26" y="26" width="14" height="14" rx="2" fill="#06B6D4" opacity="0.5" />
-          </svg>
+          <img :src="cubeLogoImg" alt="智能桌面魔方 Logo" class="cube-icon" />
         </div>
         <h1 class="login-title">智能桌面魔方</h1>
         <p class="login-subtitle">MVP Demo 系统</p>
@@ -101,9 +90,10 @@ import { ElMessage } from 'element-plus'
 import type { FormInstance, FormRules } from 'element-plus'
 import { useAuthStore } from '@/store/auth'
 import { login } from '@/api/auth'
-import { enableDemoMode } from '@/utils/demo'
+import { disableDemoMode, enableDemoMode } from '@/utils/demo'
 import MascotCompanion from '@/components/brand/MascotCompanion.vue'
 import MineradioParticleStage from '@/components/brand/MineradioParticleStage.vue'
+import cubeLogoImg from '@/assets/brand/cube-logo.png'
 
 defineOptions({
   name: 'LoginPage',
@@ -139,6 +129,7 @@ async function handleLogin() {
 
   loading.value = true
   try {
+    disableDemoMode()
     const res = await login({ username: form.username, password: form.password })
     authStore.setAuth({
       token: res.access_token,
@@ -294,9 +285,12 @@ async function handleDemoLogin() {
 }
 
 .cube-icon {
-  width: 48px;
-  height: 48px;
-  filter: drop-shadow(0 0 20px rgba(6, 182, 212, 0.55));
+  width: 72px;
+  height: 72px;
+  object-fit: contain;
+  filter:
+    drop-shadow(0 12px 16px rgba(0, 0, 0, 0.28))
+    drop-shadow(0 0 22px rgba(6, 182, 212, 0.5));
 }
 
 .login-title {

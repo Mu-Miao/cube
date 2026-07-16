@@ -2,10 +2,138 @@
 <html lang="zh-CN">
   <head>
     <meta charset="UTF-8" />
+    <link rel="icon" type="image/png" href="/cube-logo.png" />
+    <link rel="preload" as="image" href="/boot_sleep.gif" />
     <title>智能桌面魔方 - 数字孪生环境管理系统</title>
+    <style>
+      html,
+      body,
+      #app {
+        min-height: 100%;
+      }
+
+      .app-boot-loader {
+        position: fixed;
+        inset: 0;
+        z-index: 9999;
+        display: grid;
+        place-items: center;
+        overflow: hidden;
+        color: rgba(255, 255, 255, 0.86);
+        background:
+          radial-gradient(ellipse 70% 58% at 16% 22%, rgba(0, 209, 255, 0.24), transparent 68%),
+          radial-gradient(ellipse 72% 62% at 88% 22%, rgba(94, 73, 255, 0.3), transparent 70%),
+          linear-gradient(145deg, #020711 0%, #04132b 42%, #030817 100%);
+        font-family: Inter, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      }
+
+      .app-boot-loader::before {
+        content: '';
+        position: absolute;
+        width: min(520px, 72vw);
+        aspect-ratio: 1;
+        border-radius: 999px;
+        background: radial-gradient(circle, rgba(90, 219, 255, 0.18), rgba(126, 93, 255, 0.08) 42%, transparent 70%);
+        filter: blur(20px);
+        animation: boot-aura 3.6s ease-in-out infinite alternate;
+      }
+
+      .app-boot-loader__panel {
+        position: relative;
+        display: grid;
+        justify-items: center;
+        gap: 14px;
+        width: min(300px, 82vw);
+        padding: 28px 28px 24px;
+        border: 1px solid rgba(200, 237, 255, 0.2);
+        border-radius: 30px;
+        background:
+          linear-gradient(145deg, rgba(122, 207, 255, 0.13), rgba(12, 33, 72, 0.34) 54%, rgba(111, 89, 255, 0.12)),
+          rgba(5, 18, 42, 0.36);
+        box-shadow:
+          0 28px 80px rgba(0, 3, 15, 0.34),
+          inset 0 1px 0 rgba(255, 255, 255, 0.22);
+        backdrop-filter: blur(28px) saturate(1.7);
+        -webkit-backdrop-filter: blur(28px) saturate(1.7);
+      }
+
+      .app-boot-loader__image-wrap {
+        display: grid;
+        place-items: center;
+        width: 172px;
+        height: 172px;
+        overflow: hidden;
+        border-radius: 28px;
+        background:
+          radial-gradient(circle at 50% 44%, rgba(236, 253, 255, 0.52), rgba(102, 222, 255, 0.34) 42%, rgba(96, 142, 255, 0.22) 76%),
+          linear-gradient(145deg, rgba(118, 224, 255, 0.28), rgba(126, 105, 255, 0.18));
+        isolation: isolate;
+        box-shadow:
+          inset 0 1px 0 rgba(255, 255, 255, 0.34),
+          inset 0 -1px 0 rgba(53, 98, 255, 0.14),
+          0 0 28px rgba(72, 208, 255, 0.12);
+      }
+
+      .app-boot-loader__image {
+        width: 164px;
+        height: 164px;
+        object-fit: contain;
+        mix-blend-mode: screen;
+        filter:
+          brightness(1.18)
+          contrast(1.02)
+          saturate(1.06)
+          drop-shadow(0 16px 24px rgba(0, 0, 0, 0.14))
+          drop-shadow(0 0 18px rgba(88, 216, 255, 0.24));
+      }
+
+      .app-boot-loader__text {
+        font-size: 15px;
+        font-weight: 700;
+        letter-spacing: 0.08em;
+      }
+
+      .app-boot-loader__dots::after {
+        content: '……';
+        display: inline-block;
+        width: 2.4em;
+        overflow: hidden;
+        vertical-align: bottom;
+        animation: boot-dots 1.2s steps(4, end) infinite;
+      }
+
+      @keyframes boot-aura {
+        from {
+          transform: translate3d(-12px, 10px, 0) scale(0.96);
+          opacity: 0.72;
+        }
+        to {
+          transform: translate3d(12px, -12px, 0) scale(1.04);
+          opacity: 1;
+        }
+      }
+
+      @keyframes boot-dots {
+        from {
+          width: 0;
+        }
+        to {
+          width: 2.4em;
+        }
+      }
+    </style>
   </head>
   <body>
-    <div id="app"></div>
+    <div id="app">
+      <div class="app-boot-loader" role="status" aria-label="Loading">
+        <div class="app-boot-loader__panel">
+          <div class="app-boot-loader__image-wrap">
+            <img class="app-boot-loader__image" src="/boot_sleep.gif" alt="小眠启动中" />
+          </div>
+          <div class="app-boot-loader__text">Loading<span class="app-boot-loader__dots"></span></div>
+        </div>
+      </div>
+    </div>
     <script type="module" src="/src/main.ts"></script>
   </body>
 </html>

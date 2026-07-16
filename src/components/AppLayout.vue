@@ -10,28 +10,7 @@
       <div class="sidebar-logo">
         <div class="logo-bar"></div>
         <div class="logo-icon">
-          <svg
-            width="32"
-            height="32"
-            viewBox="0 0 32 32"
-            fill="none"
-            xmlns="http://www.w3.org/2000/svg"
-          >
-            <rect
-              x="2"
-              y="2"
-              width="28"
-              height="28"
-              rx="6"
-              stroke="#06B6D4"
-              stroke-width="2"
-              fill="rgba(6,182,212,0.08)"
-            />
-            <rect x="8" y="8" width="6" height="6" rx="1" fill="#06B6D4" />
-            <rect x="18" y="8" width="6" height="6" rx="1" fill="#06B6D4" opacity="0.6" />
-            <rect x="8" y="18" width="6" height="6" rx="1" fill="#06B6D4" opacity="0.6" />
-            <rect x="18" y="18" width="6" height="6" rx="1" fill="#06B6D4" opacity="0.3" />
-          </svg>
+          <img :src="cubeLogoImg" alt="魔方 Logo" class="logo-image" />
         </div>
         <span class="logo-text">魔方</span>
       </div>
@@ -44,6 +23,9 @@
           :to="item.path"
           class="nav-item"
           :class="{ active: currentRoute === item.path }"
+          @pointerenter="prefetchRoute(item.path)"
+          @pointerdown.passive="prefetchRoute(item.path)"
+          @focus="prefetchRoute(item.path)"
         >
           <component :is="item.icon" class="nav-icon" />
           <span class="nav-label">{{ item.label }}</span>
@@ -102,7 +84,7 @@
       <!-- 内容区 -->
       <main class="content-area">
         <router-view v-slot="{ Component, route }">
-          <transition name="page-load" mode="out-in" appear>
+          <transition name="page-load" appear>
             <component :is="Component" :key="route.fullPath" class="route-view" />
           </transition>
         </router-view>
@@ -124,7 +106,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, ref, onMounted, onUnmounted } from 'vue'
+import { computed, ref, onMounted, onUnmounted, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import {
@@ -140,10 +122,12 @@ import {
 } from '@element-plus/icons-vue'
 import { useAuthStore } from '@/store/auth'
 import { isDemoMode } from '@/utils/demo'
+import { routeComponentLoaders, type PreloadableRoutePath } from '@/router/routeLoaders'
 import MascotCompanion from '@/components/brand/MascotCompanion.vue'
 import MineradioParticleStage from '@/components/brand/MineradioParticleStage.vue'
 import ChatPanel from '@/components/ChatPanel.vue'
 import mascotNormalImg from '@/assets/mascot/role_normal.webp'
+import cubeLogoImg from '@/assets/brand/cube-logo.png'
 
 defineOptions({ name: 'AppLayout' })
 
@@ -152,6 +136,9 @@ const router = useRouter()
 const authStore = useAuthStore()
 const demoMode = isDemoMode()
 const chatOpen = ref(false)
+const prefetchedRoutes = new Set<string>()
+const navHighlightOverride = ref<string | null>(null)
+let routeWarmupTimer = 0
 
 // ====== 聊天面板拖拽调整宽度 ======
 const chatWidth = ref(380)
@@ -183,12 +170,23 @@ function onResizeEnd() {
 onMounted(() => {
   window.addEventListener('mousemove', onResizeMove)
   window.addEventListener('mouseup', onResizeEnd)
+  window.addEventListener('cube:navigation-highlight', handleNavigationHighlight)
+  scheduleRouteWarmup()
 })
 
 onUnmounted(() => {
   window.removeEventListener('mousemove', onResizeMove)
   window.removeEventListener('mouseup', onResizeEnd)
+  window.removeEventListener('cube:navigation-highlight', handleNavigationHighlight)
+  window.clearTimeout(routeWarmupTimer)
 })
+
+watch(
+  () => route.path,
+  () => {
+    navHighlightOverride.value = null
+  },
+)
 
 // 菜单项配置
 const baseMenuItems = [
@@ -206,8 +204,40 @@ const menuItems = computed(() => {
   return items
 })
 
+function isPreloadableRoute(path: string): path is PreloadableRoutePath {
+  return path in routeComponentLoaders
+}
+
+function prefetchRoute(path: string) {
+  if (!isPreloadableRoute(path) || prefetchedRoutes.has(path)) return
+  prefetchedRoutes.add(path)
+  void routeComponentLoaders[path]().catch(() => {
+    prefetchedRoutes.delete(path)
+  })
+}
+
+function scheduleRouteWarmup() {
+  routeWarmupTimer = window.setTimeout(() => {
+    const paths = menuItems.value
+      .map((item) => item.path)
+      .filter((path) => path !== currentRoute.value)
+
+    paths.forEach((path, index) => {
+      window.setTimeout(() => {
+        prefetchRoute(path)
+      }, index * 180)
+    })
+  }, 600)
+}
+
 // 当前路由路径（用于判断 active 状态）
-const currentRoute = computed(() => route.path)
+const currentRoute = computed(() => navHighlightOverride.value || route.path)
+
+function handleNavigationHighlight(event: Event) {
+  const detail = (event as CustomEvent<{ path?: string | null }>).detail
+  const path = detail?.path
+  navHighlightOverride.value = typeof path === 'string' && path ? path : null
+}
 
 // 面包屑：根据当前路由自动生成
 const breadcrumbs = computed(() => {
@@ -335,16 +365,19 @@ function handleLogout() {
 }
 .logo-icon {
   flex-shrink: 0;
-  width: 42px;
-  height: 42px;
+  width: 46px;
+  height: 46px;
   display: grid;
   place-items: center;
   position: relative;
-  border-radius: 12px;
-  background: rgba(34, 211, 238, 0.1);
+  border-radius: 15px;
+  background:
+    radial-gradient(circle at 35% 24%, rgba(255, 255, 255, 0.22), transparent 36%),
+    linear-gradient(145deg, rgba(34, 211, 238, 0.18), rgba(91, 63, 255, 0.08));
   box-shadow:
-    inset 0 0 0 1px rgba(34, 211, 238, 0.2),
-    0 0 20px rgba(34, 211, 238, 0.08);
+    inset 0 0 0 1px rgba(188, 235, 255, 0.2),
+    0 10px 24px rgba(0, 0, 0, 0.18),
+    0 0 22px rgba(34, 211, 238, 0.12);
 }
 .logo-icon::before {
   content: '';
@@ -364,9 +397,15 @@ function handleLogout() {
   mask-composite: exclude;
   opacity: 0.7;
 }
-.logo-icon svg {
+.logo-image {
   position: relative;
   z-index: 1;
+  width: 42px;
+  height: 42px;
+  object-fit: contain;
+  filter:
+    drop-shadow(0 7px 10px rgba(0, 0, 0, 0.22))
+    drop-shadow(0 0 12px rgba(34, 211, 238, 0.26));
 }
 .logo-text {
   font-family: var(--font-display);
@@ -679,24 +718,28 @@ function handleLogout() {
 
 .page-load-enter-active {
   transition:
-    opacity 720ms ease,
-    transform 860ms cubic-bezier(0.16, 1, 0.3, 1);
+    opacity 260ms ease,
+    transform 320ms cubic-bezier(0.2, 0.8, 0.2, 1);
 }
 
 .page-load-leave-active {
+  position: absolute;
+  inset: 28px var(--spacing-page) auto var(--spacing-page);
+  width: calc(100% - var(--spacing-page) * 2);
   transition:
-    opacity 180ms ease,
-    transform 180ms ease;
+    opacity 120ms ease,
+    transform 120ms ease;
+  pointer-events: none;
 }
 
 .page-load-enter-from {
   opacity: 0;
-  transform: translateY(18px) scale(0.992);
+  transform: translateY(8px) scale(0.998);
 }
 
 .page-load-leave-to {
   opacity: 0;
-  transform: translateY(-6px) scale(0.996);
+  transform: translateY(-4px) scale(0.998);
 }
 
 .content-area :deep(.devices-page > *),

@@ -8,13 +8,7 @@
       <!-- Logo + 标题 -->
       <div class="register-header">
         <div class="register-logo">
-          <svg viewBox="0 0 48 48" class="cube-icon" fill="none" xmlns="http://www.w3.org/2000/svg">
-            <!-- 简化魔方 SVG 图标 -->
-            <rect x="8" y="8" width="14" height="14" rx="2" fill="#06B6D4" opacity="0.9" />
-            <rect x="26" y="8" width="14" height="14" rx="2" fill="#22D3EE" opacity="0.7" />
-            <rect x="8" y="26" width="14" height="14" rx="2" fill="#0891B2" opacity="0.7" />
-            <rect x="26" y="26" width="14" height="14" rx="2" fill="#06B6D4" opacity="0.5" />
-          </svg>
+          <img :src="cubeLogoImg" alt="智能桌面魔方 Logo" class="cube-icon" />
         </div>
         <h2 class="register-title">注册账号</h2>
       </div>
@@ -81,6 +75,7 @@ import { useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import type { FormInstance, FormRules } from 'element-plus'
 import { register } from '@/api/auth'
+import cubeLogoImg from '@/assets/brand/cube-logo.png'
 
 defineOptions({
   name: 'RegisterPage',
@@ -247,9 +242,12 @@ async function handleRegister() {
 }
 
 .cube-icon {
-  width: 48px;
-  height: 48px;
-  filter: drop-shadow(0 0 20px rgba(6, 182, 212, 0.55));
+  width: 72px;
+  height: 72px;
+  object-fit: contain;
+  filter:
+    drop-shadow(0 12px 16px rgba(0, 0, 0, 0.28))
+    drop-shadow(0 0 22px rgba(6, 182, 212, 0.5));
 }
 
 .register-title {

@@ -59,11 +59,12 @@
 
         <div class="dashboard-control-twin">
           <div class="dashboard-control-twin__halo"></div>
-          <DigitalTwinPlaceholder
+          <GlbCubeModel
             class="dashboard-control-twin__model"
             :class="{ 'dashboard-control-twin__model--flight-hidden': twinFlightActive }"
             :label="controlModeDevice.device_name"
             :offline="controlModeDevice.status !== 'online'"
+            interactive
             show-label
             size="hero"
           />
@@ -82,10 +83,10 @@
               @update:model-value="(val: boolean) => handleControl('light', val)"
             />
             <ControlToggle
-              v-model="controlState.buzzer"
-              label="蜂鸣器"
+              v-model="controlState.wechatNotify"
+              label="微信通知"
               :disabled="controlModeDevice.status !== 'online'"
-              @update:model-value="(val: boolean) => handleControl('buzzer', val)"
+              @update:model-value="(val: boolean) => handleControl('wechat_notify', val)"
             />
             <ControlToggle
               v-model="controlState.focus"
@@ -171,7 +172,9 @@
           :muted="Boolean(launchingDeviceId && launchingDeviceId !== device.device_id)"
           :transition-name="!controlModeDeviceId && selectedDeviceId === device.device_id ? 'active-twin' : undefined"
           :twin-hidden="twinFlightActive && selectedDeviceId === device.device_id"
+          :refreshing="refreshingDeviceId === device.device_id"
           @click="handleDeviceClick"
+          @refresh-data="handleDeviceDataRefresh"
         />
         <!-- + 添加设备按钮卡片 -->
         <div class="add-device-card" @click="showBindDialog = true">
@@ -192,7 +195,7 @@
           </span>
         </div>
 
-        <!-- 3 个主指标卡：温度、湿度、AQI -->
+        <!-- 主指标卡：温度、湿度、AQI、PM2.5 -->
         <div class="sensor-cards-grid">
           <SensorCard
             title="温度"
@@ -221,7 +224,19 @@
             :trend-data="trendData.aqi"
             color="#10B981"
           />
+          <SensorCard
+            title="PM2.5"
+            :value="formatPm25(sensorData.pm25)"
+            unit="μg/m³"
+            icon="•"
+            :status="getPm25Status(sensorData.pm25)"
+            :trend-data="trendData.pm25"
+            color="#94A3B8"
+          />
         </div>
+        <p class="pm25-reference-note">
+          PM2.5 为机器学习估算值，仅供参考，不代表 100% 精确检测结果。
+        </p>
 
         <!-- 3 个次指标卡：TVOC、eCO2、霉菌风险 -->
         <div class="sensor-mini-cards-grid">
@@ -261,10 +276,10 @@
               @update:model-value="(val: boolean) => handleControl('light', val)"
             />
             <ControlToggle
-              v-model="controlState.buzzer"
-              label="蜂鸣器"
+              v-model="controlState.wechatNotify"
+              label="微信通知"
               :disabled="!selectedDevice || selectedDevice.status !== 'online'"
-              @update:model-value="(val: boolean) => handleControl('buzzer', val)"
+              @update:model-value="(val: boolean) => handleControl('wechat_notify', val)"
             />
             <ControlToggle
               v-model="controlState.focus"
@@ -355,18 +370,16 @@
       :style="twinFlightStyle"
       aria-hidden="true"
     >
-      <DigitalTwinPlaceholder
+      <CubeSpinGifPreview
         :label="twinFlightLabel"
         :offline="twinFlightOffline"
-        show-label
-        size="hero"
       />
     </div>
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref, reactive, computed, onMounted, onUnmounted, watch, nextTick } from 'vue'
+import { defineAsyncComponent, ref, reactive, computed, onMounted, onUnmounted, watch, nextTick } from 'vue'
 import { ElMessage } from 'element-plus'
 import * as echarts from 'echarts'
 import DeviceOverviewCard from '@/components/DeviceOverviewCard.vue'
@@ -376,12 +389,14 @@ import ControlToggle from '@/components/ControlToggle.vue'
 import GasAlertBanner from '@/components/GasAlertBanner.vue'
 import MascotCompanion from '@/components/brand/MascotCompanion.vue'
 import MineradioParticleStage from '@/components/brand/MineradioParticleStage.vue'
-import DigitalTwinPlaceholder from '@/components/brand/DigitalTwinPlaceholder.vue'
+import CubeSpinGifPreview from '@/components/brand/CubeSpinGifPreview.vue'
 import { getDeviceList, bindDevice, getLatestData, sendControlCommand } from '@/api/device'
 import { useWebSocket } from '@/composables/useWebSocket'
 import { useDeviceStore } from '@/store/device'
 
 defineOptions({ name: 'DashboardPage' })
+
+const GlbCubeModel = defineAsyncComponent(() => import('@/components/brand/GlbCubeModel.vue'))
 
 const deviceStore = useDeviceStore()
 
@@ -398,6 +413,7 @@ const selectedDeviceId = ref('')
 const launchingDeviceId = ref('')
 const returningDeviceId = ref('')
 const controlModeDeviceId = ref('')
+const refreshingDeviceId = ref('')
 const controlContentVisible = ref(false)
 const twinFlightRef = ref<HTMLElement>()
 const twinFlightVisible = ref(false)
@@ -445,12 +461,13 @@ const trendData = reactive({
   temperature: [] as number[],
   humidity: [] as number[],
   aqi: [] as number[],
+  pm25: [] as number[],
 })
 
 // 快捷控制状态
 const controlState = reactive({
   light: false,
-  buzzer: false,
+  wechatNotify: false,
   focus: false,
 })
 
@@ -523,6 +540,14 @@ const alertList = computed(() => {
       level: 'warning',
     })
   }
+  if (sensorData.pm25 > 35) {
+    alerts.push({
+      icon: '•',
+      description: `PM2.5 估算偏高：${formatPm25(sensorData.pm25)} μg/m³（仅供参考）`,
+      time: formatRelativeTime(),
+      level: sensorData.pm25 > 75 ? 'danger' : 'warning',
+    })
+  }
   if (sensorData.eco2 > 800) {
     alerts.push({
       icon: '💨',
@@ -576,9 +601,14 @@ const heroParticleIntensity = computed(() => {
   return selectedDevice.value?.status === 'online' ? 0.88 : 0.62
 })
 
+const formatFixedMetric = (value: number, unit: string) => {
+  if (!Number.isFinite(value) || value === 0) return `--${unit}`
+  return `${value.toFixed(1)}${unit}`
+}
+
 const mascotMetrics = computed(() => [
-  { label: '温度', value: `${sensorData.temperature || '--'}℃` },
-  { label: '湿度', value: `${sensorData.humidity || '--'}%` },
+  { label: '温度', value: formatFixedMetric(sensorData.temperature, '℃') },
+  { label: '湿度', value: formatFixedMetric(sensorData.humidity, '%') },
   { label: 'AQI', value: sensorData.aqi || '--' },
 ])
 
@@ -626,6 +656,17 @@ function getAqiStatus(val: number): 'normal' | 'warning' | 'danger' {
   return 'normal'
 }
 
+function getPm25Status(val: number): 'normal' | 'warning' | 'danger' {
+  if (val > 75) return 'danger'
+  if (val > 35) return 'warning'
+  return 'normal'
+}
+
+function formatPm25(val: number | undefined): string {
+  if (!Number.isFinite(val) || !val) return '--'
+  return val.toFixed(1)
+}
+
 function getTvocStatus(val: number): 'normal' | 'warning' | 'danger' {
   if (val > 300) return 'danger'
   if (val > 200) return 'warning'
@@ -659,6 +700,7 @@ async function fetchDevices() {
       const target = firstOnline || list[0]
       if (target) {
         selectedDeviceId.value = target.device_id
+        deviceStore.selectDevice(target.device_id)
         fetchLatestData(target.device_id)
       }
     }
@@ -667,7 +709,7 @@ async function fetchDevices() {
   }
 }
 
-async function fetchLatestData(deviceId: string) {
+async function fetchLatestData(deviceId: string, showError = false) {
   try {
     const data = await getLatestData(deviceId)
     if (data) {
@@ -684,9 +726,13 @@ async function fetchLatestData(deviceId: string) {
       pushTrendData()
       // 更新图表
       updateChart()
+      return true
     }
+    if (showError) ElMessage.warning('该设备暂无最新数据')
+    return false
   } catch {
-    // 设备可能无数据，忽略
+    if (showError) ElMessage.error('刷新设备数据失败')
+    return false
   }
 }
 
@@ -699,10 +745,12 @@ function pushTrendData() {
   trendData.temperature.push(sensorData.temperature)
   trendData.humidity.push(sensorData.humidity)
   trendData.aqi.push(sensorData.aqi)
+  trendData.pm25.push(sensorData.pm25)
 
   if (trendData.temperature.length > maxLen) trendData.temperature.shift()
   if (trendData.humidity.length > maxLen) trendData.humidity.shift()
   if (trendData.aqi.length > maxLen) trendData.aqi.shift()
+  if (trendData.pm25.length > maxLen) trendData.pm25.shift()
 }
 
 // ============================================================
@@ -913,20 +961,37 @@ async function animateTwinFlight(fromRect: DOMRect | undefined, toRect: DOMRect 
   })
 }
 
-function finishTwinFlight() {
+async function waitForPaintFrames(count = 1) {
+  for (let index = 0; index < count; index += 1) {
+    await new Promise<void>((resolve) => {
+      window.requestAnimationFrame(() => resolve())
+    })
+  }
+}
+
+async function finishTwinFlight() {
   window.clearTimeout(twinFlightCleanupTimer)
+  twinFlightVisible.value = false
+  await nextTick()
   twinFlightActive.value = false
   twinFlightPlaying.value = false
-  twinFlightCleanupTimer = window.setTimeout(() => {
-    twinFlightVisible.value = false
-    twinFlightStyle.value = {}
-  }, 40)
+  twinFlightStyle.value = {}
+}
+
+function setNavigationHighlight(path: string | null) {
+  window.dispatchEvent(
+    new CustomEvent('cube:navigation-highlight', {
+      detail: { path },
+    }),
+  )
 }
 
 async function enterInlineControl(deviceId: string, startRect?: DOMRect) {
   const flightStartRect = startRect || readDeviceTwinRect(deviceId)
   const device = deviceStore.devices.find((item) => item.device_id === deviceId)
   selectedDeviceId.value = deviceId
+  deviceStore.selectDevice(deviceId)
+  setNavigationHighlight('/control')
   fetchLatestData(deviceId)
   launchingDeviceId.value = deviceId
   controlContentVisible.value = false
@@ -950,9 +1015,9 @@ async function enterInlineControl(deviceId: string, startRect?: DOMRect) {
   if (!usedNativeTransition && flightStartRect) {
     await nextTick()
     await animateTwinFlight(flightStartRect, readTwinRect('.dashboard-control-twin__model'))
-    finishTwinFlight()
+    await finishTwinFlight()
   } else {
-    finishTwinFlight()
+    await finishTwinFlight()
   }
 
   launchingDeviceId.value = ''
@@ -965,6 +1030,22 @@ async function enterInlineControl(deviceId: string, startRect?: DOMRect) {
 
 function handleDeviceClick(device: { device_id: string }, rect?: DOMRect) {
   void enterInlineControl(device.device_id, rect || readDeviceTwinRect(device.device_id))
+}
+
+async function handleDeviceDataRefresh(device: { device_id: string; status?: string }) {
+  if (!device.device_id || refreshingDeviceId.value) return
+
+  refreshingDeviceId.value = device.device_id
+  selectedDeviceId.value = device.device_id
+  deviceStore.selectDevice(device.device_id)
+  try {
+    const ok = await fetchLatestData(device.device_id, true)
+    if (ok) {
+      ElMessage.success('设备数据已刷新')
+    }
+  } finally {
+    refreshingDeviceId.value = ''
+  }
 }
 
 function goToControl(deviceId: string) {
@@ -984,8 +1065,6 @@ async function leaveInlineControl() {
   const updateToDashboardMode = async () => {
     controlModeDeviceId.value = ''
     await nextTick()
-    initChart()
-    updateChart()
   }
   const shouldUseTwinFlight = Boolean(startRect && !prefersReducedMotion())
   const usedNativeTransition = shouldUseTwinFlight
@@ -996,13 +1075,19 @@ async function leaveInlineControl() {
   }
   if (!usedNativeTransition) {
     await nextTick()
+    await waitForPaintFrames(2)
     await animateTwinFlight(startRect, readDeviceTwinRect(deviceId))
-    finishTwinFlight()
+    await finishTwinFlight()
   } else {
-    finishTwinFlight()
+    await finishTwinFlight()
   }
 
   returningDeviceId.value = ''
+  setNavigationHighlight(null)
+  await nextTick()
+  await waitForPaintFrames(1)
+  initChart()
+  updateChart()
 }
 
 async function handleControl(command: string, value: boolean) {
@@ -1013,13 +1098,13 @@ async function handleControl(command: string, value: boolean) {
       value: value ? 'on' : 'off',
     })
     ElMessage.success(
-      `${command === 'light' ? '灯光' : command === 'buzzer' ? '蜂鸣器' : '专注模式'}已${value ? '开启' : '关闭'}`,
+      `${command === 'light' ? '灯光' : command === 'wechat_notify' ? '微信通知' : '专注模式'}已${value ? '开启' : '关闭'}`,
     )
   } catch {
     ElMessage.error('控制指令发送失败')
     // 恢复开关状态
     if (command === 'light') controlState.light = !value
-    if (command === 'buzzer') controlState.buzzer = !value
+    if (command === 'wechat_notify') controlState.wechatNotify = !value
     if (command === 'focus') controlState.focus = !value
   }
 }
@@ -1060,7 +1145,7 @@ const ws = useWebSocket('/ws')
 // ============================================================
 
 watch(selectedDeviceId, (newId) => {
-  if (newId) {
+  if (newId && refreshingDeviceId.value !== newId) {
     fetchLatestData(newId)
   }
 })
@@ -1099,6 +1184,7 @@ onMounted(() => {
 
 onUnmounted(() => {
   window.clearTimeout(twinFlightCleanupTimer)
+  setNavigationHighlight(null)
   ws.disconnect()
   if (chart) {
     chart.dispose()
@@ -1394,8 +1480,8 @@ onUnmounted(() => {
 
 /* Device card sizing */
 .device-cards-scroll :deep(.device-overview-card) {
-  min-width: 180px;
-  max-width: 220px;
+  min-width: 240px;
+  max-width: 260px;
   flex-shrink: 0;
 }
 
@@ -1403,7 +1489,7 @@ onUnmounted(() => {
    Add Device Card — Glass
    ============================================================ */
 .add-device-card {
-  min-width: 180px;
+  min-width: 200px;
   max-width: 220px;
   flex-shrink: 0;
   position: relative;
@@ -1500,13 +1586,24 @@ onUnmounted(() => {
 }
 
 /* ============================================================
-   Sensor Cards Grid (Main Metrics — 3 cols)
+   Sensor Cards Grid (Main Metrics)
    ============================================================ */
 .sensor-cards-grid {
   display: grid;
-  grid-template-columns: repeat(3, 1fr);
+  grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: 16px;
-  margin-bottom: 16px;
+  margin-bottom: 10px;
+}
+
+.pm25-reference-note {
+  margin: 0 0 16px;
+  padding: 9px 12px;
+  border: 1px solid rgba(148, 163, 184, 0.18);
+  border-radius: 12px;
+  color: rgba(226, 232, 240, 0.72);
+  background: rgba(148, 163, 184, 0.055);
+  font-size: 12px;
+  line-height: 1.45;
 }
 
 /* ============================================================
@@ -2024,10 +2121,6 @@ onUnmounted(() => {
   --twin-size: 100%;
   width: 100%;
   height: 100%;
-}
-
-.dashboard-twin-flight--return :deep(.digital-twin__label) {
-  opacity: 0.72;
 }
 
 .dashboard-control-metrics {

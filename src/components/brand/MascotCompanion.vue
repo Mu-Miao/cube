@@ -1,7 +1,11 @@
 <template>
   <aside
     class="mascot-companion"
-    :class="[`mascot-companion--${tone}`, { 'mascot-companion--compact': compact }]"
+    :class="[
+      `mascot-companion--${tone}`,
+      `mascot-companion--state-${state}`,
+      { 'mascot-companion--compact': compact },
+    ]"
   >
     <div class="mascot-companion__aura" />
     <div class="mascot-companion__image-wrap">
@@ -165,6 +169,9 @@ const tone = computed(() => currentConfig.value.tone)
   display: grid;
   place-items: end center;
   min-height: 198px;
+  overflow: hidden;
+  border-radius: 28px;
+  isolation: isolate;
 }
 
 .mascot-companion__image-wrap::after {
@@ -189,6 +196,46 @@ const tone = computed(() => currentConfig.value.tone)
     drop-shadow(0 0 12px rgba(255, 255, 255, 0.08));
   transform-origin: 50% 86%;
   animation: mascot-float 4.6s ease-in-out infinite;
+}
+
+.mascot-companion--state-boot .mascot-companion__image-wrap {
+  place-items: center;
+  background:
+    radial-gradient(circle at 50% 44%, rgba(236, 253, 255, 0.52), rgba(102, 222, 255, 0.34) 42%, rgba(96, 142, 255, 0.22) 76%),
+    linear-gradient(145deg, rgba(118, 224, 255, 0.28), rgba(126, 105, 255, 0.18));
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.34),
+    inset 0 -1px 0 rgba(53, 98, 255, 0.14),
+    0 18px 34px rgba(0, 7, 22, 0.14),
+    0 0 28px rgba(72, 208, 255, 0.12);
+}
+
+.mascot-companion--state-boot .mascot-companion__image-wrap::before {
+  content: '';
+  position: absolute;
+  inset: 12px;
+  z-index: 0;
+  border-radius: 24px;
+  background:
+    radial-gradient(circle at 50% 46%, rgba(255, 255, 255, 0.16), transparent 62%),
+    linear-gradient(160deg, rgba(255, 255, 255, 0.13), transparent 44%, rgba(34, 211, 238, 0.1));
+  border: 1px solid rgba(225, 248, 255, 0.16);
+}
+
+.mascot-companion--state-boot .mascot-companion__image-wrap::after {
+  background: rgba(52, 211, 238, 0.15);
+  filter: blur(12px);
+}
+
+.mascot-companion--state-boot .mascot-companion__image {
+  width: min(196px, 96%);
+  mix-blend-mode: screen;
+  filter:
+    brightness(1.18)
+    contrast(1.02)
+    saturate(1.06)
+    drop-shadow(0 16px 24px rgba(0, 0, 0, 0.14))
+    drop-shadow(0 0 18px rgba(88, 216, 255, 0.24));
 }
 
 .mascot-companion__content {
@@ -236,35 +283,48 @@ const tone = computed(() => currentConfig.value.tone)
 .mascot-companion__metrics {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 8px;
+  gap: 10px;
   margin-top: 18px;
 }
 
 .mascot-companion__metric {
   min-width: 0;
-  padding: 10px;
-  border: 1px solid rgba(255, 255, 255, 0.1);
-  border-radius: 14px;
-  background: rgba(255, 255, 255, 0.04);
-  box-shadow: inset 0 1px 1px rgba(255, 255, 255, 0.06);
+  padding: 13px 12px;
+  border: 1px solid rgba(190, 231, 255, 0.25);
+  border-radius: 16px;
+  background: linear-gradient(145deg, rgba(145, 218, 255, 0.12), rgba(15, 42, 82, 0.18));
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.32),
+    0 12px 30px rgba(0, 4, 22, 0.16);
+  backdrop-filter: blur(18px) saturate(1.9);
+  -webkit-backdrop-filter: blur(18px) saturate(1.9);
+  animation: mascot-metric-rise 860ms cubic-bezier(0.16, 1, 0.3, 1) both;
+  will-change: transform, opacity;
 }
+
+.mascot-companion__metric:nth-child(1) { animation-delay: 140ms; }
+.mascot-companion__metric:nth-child(2) { animation-delay: 220ms; }
+.mascot-companion__metric:nth-child(3) { animation-delay: 300ms; }
 
 .mascot-companion__metric-value {
   display: block;
-  overflow: hidden;
+  overflow: visible;
   color: var(--text-primary);
   font-family: var(--font-mono);
-  font-size: 15px;
+  font-size: clamp(18px, 1.32vw, 20px);
   font-weight: 700;
-  text-overflow: ellipsis;
+  line-height: 1.1;
   white-space: nowrap;
 }
 
 .mascot-companion__metric-label {
   display: block;
-  margin-top: 4px;
+  overflow: hidden;
+  margin-top: 6px;
   color: var(--text-disabled);
-  font-size: 11px;
+  font-size: 12px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 /* 状态变体 */
@@ -344,6 +404,19 @@ const tone = computed(() => currentConfig.value.tone)
   }
   to {
     transform: translateY(-50%) rotate(360deg);
+  }
+}
+
+@keyframes mascot-metric-rise {
+  from {
+    opacity: 0;
+    transform: translateY(14px) scale(0.97);
+    filter: blur(6px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+    filter: blur(0);
   }
 }
 

@@ -84,8 +84,14 @@
           <el-button size="small" @click="goToControl(device.device_id)">
             查看详情
           </el-button>
-          <el-button size="small" type="danger" plain @click="confirmUnbind(device)">
-            解绑
+          <el-button
+            size="small"
+            type="danger"
+            plain
+            title="解除此设备与当前账号的绑定"
+            @click="confirmUnbind(device)"
+          >
+            解除绑定
           </el-button>
         </div>
       </div>
@@ -570,10 +576,19 @@ onMounted(() => {
 /* 操作按钮 */
 .device-card__actions {
   display: flex;
+  flex-wrap: wrap;
   gap: 8px;
   margin-top: 4px;
   position: relative;
   z-index: 1;
+}
+
+.device-card__actions :deep(.el-button--danger) {
+  --el-button-text-color: #fff;
+  --el-button-hover-text-color: #fff;
+  --el-button-active-text-color: #fff;
+  --el-button-disabled-text-color: rgba(255, 255, 255, 0.72);
+  color: #fff !important;
 }
 
 /* === 空状态 — Glass Empty === */
@@ -626,22 +641,40 @@ onMounted(() => {
 
 /* === Element Plus 覆盖 — Glass Inputs === */
 .devices-toolbar :deep(.el-input__wrapper),
-.devices-toolbar :deep(.el-select .el-input__wrapper) {
-  background: rgba(255, 255, 255, 0.06);
+.devices-toolbar :deep(.el-select .el-input__wrapper),
+.devices-toolbar :deep(.el-select__wrapper) {
+  min-height: 34px;
+  background:
+    linear-gradient(145deg, rgba(95, 190, 255, 0.09), rgba(8, 28, 60, 0.32)),
+    rgba(255, 255, 255, 0.045);
   border: 1px solid rgba(255, 255, 255, 0.14);
-  box-shadow: none;
+  border-radius: 11px;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.16),
+    0 8px 22px rgba(0, 4, 18, 0.12);
+  backdrop-filter: blur(18px) saturate(1.55);
+  -webkit-backdrop-filter: blur(18px) saturate(1.55);
+  transition:
+    background var(--transition-base),
+    border-color var(--transition-base),
+    box-shadow var(--transition-base);
 }
 .devices-toolbar :deep(.el-input__wrapper:hover),
-.devices-toolbar :deep(.el-select .el-input__wrapper:hover) {
-  background: rgba(255, 255, 255, 0.10);
+.devices-toolbar :deep(.el-select .el-input__wrapper:hover),
+.devices-toolbar :deep(.el-select__wrapper:hover) {
+  background:
+    linear-gradient(145deg, rgba(111, 207, 255, 0.13), rgba(11, 36, 78, 0.38)),
+    rgba(255, 255, 255, 0.065);
   border-color: rgba(255, 255, 255, 0.24);
 }
 .devices-toolbar :deep(.el-input__wrapper.is-focus),
-.devices-toolbar :deep(.el-select .el-input__wrapper.is-focus) {
-  border-color: rgba(255, 255, 255, 0.35);
+.devices-toolbar :deep(.el-select .el-input__wrapper.is-focus),
+.devices-toolbar :deep(.el-select__wrapper.is-focused) {
+  border-color: rgba(82, 205, 255, 0.58);
   box-shadow:
-    0 0 0 1px rgba(255, 255, 255, 0.10),
-    0 0 18px rgba(255, 255, 255, 0.06);
+    inset 0 1px 0 rgba(255, 255, 255, 0.22),
+    0 0 0 1px rgba(82, 205, 255, 0.18),
+    0 0 22px rgba(34, 211, 238, 0.16);
 }
 .devices-toolbar :deep(.el-input__inner) {
   color: var(--text-primary);
@@ -649,7 +682,11 @@ onMounted(() => {
 .devices-toolbar :deep(.el-input__inner::placeholder) {
   color: var(--text-disabled);
 }
-.devices-toolbar :deep(.el-select__placeholder) {
-  color: var(--text-disabled);
+.devices-toolbar :deep(.el-select__placeholder),
+.devices-toolbar :deep(.el-select__selected-item) {
+  color: var(--text-primary);
+}
+.devices-toolbar :deep(.el-select__caret) {
+  color: rgba(216, 242, 255, 0.62);
 }
 </style>

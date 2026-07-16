@@ -7,14 +7,14 @@
       'device-overview-card--launching': launching,
       'device-overview-card--muted': muted,
       'device-overview-card--twin-hidden': twinHidden,
+      'device-overview-card--refreshing': refreshing,
     }"
     @click="handleClick"
   >
-    <DigitalTwinPlaceholder
+    <CubeSpinGifPreview
       class="device-overview-card__twin"
       :label="device.device_name"
       :offline="isOffline"
-      size="mini"
       :style="transitionName ? { '--twin-transition-name': transitionName } : undefined"
     />
 
@@ -30,18 +30,30 @@
 
     <!-- 传感器数据 -->
     <div class="device-overview-card__data">
-      <div class="device-overview-card__data-item">
+      <button
+        class="device-overview-card__data-item"
+        type="button"
+        title="刷新温度数据"
+        :disabled="refreshing"
+        @click.stop="handleRefresh"
+      >
         <span class="device-overview-card__data-label">TEMP</span>
         <span class="device-overview-card__data-value">
-          {{ isOffline ? '--' : (temperature !== null ? temperature + '℃' : '--') }}
+          {{ refreshing ? '刷新中' : (isOffline ? '--' : (temperature !== null ? temperature + '℃' : '--')) }}
         </span>
-      </div>
-      <div class="device-overview-card__data-item">
+      </button>
+      <button
+        class="device-overview-card__data-item"
+        type="button"
+        title="刷新湿度数据"
+        :disabled="refreshing"
+        @click.stop="handleRefresh"
+      >
         <span class="device-overview-card__data-label">HUM</span>
         <span class="device-overview-card__data-value">
-          {{ isOffline ? '--' : (humidity !== null ? humidity + '% RH' : '--') }}
+          {{ refreshing ? '刷新中' : (isOffline ? '--' : (humidity !== null ? humidity + '% RH' : '--')) }}
         </span>
-      </div>
+      </button>
     </div>
   </div>
 </template>
@@ -49,7 +61,7 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 import DeviceStatusDot from './DeviceStatusDot.vue'
-import DigitalTwinPlaceholder from '@/components/brand/DigitalTwinPlaceholder.vue'
+import CubeSpinGifPreview from '@/components/brand/CubeSpinGifPreview.vue'
 
 defineOptions({ name: 'DeviceOverviewCard' })
 
@@ -68,10 +80,12 @@ const props = defineProps<{
   muted?: boolean
   transitionName?: string
   twinHidden?: boolean
+  refreshing?: boolean
 }>()
 
 const emit = defineEmits<{
   (e: 'click', device: DeviceInfo, rect: DOMRect): void
+  (e: 'refresh-data', device: DeviceInfo): void
 }>()
 
 const isOffline = computed(() => {
@@ -95,6 +109,10 @@ function handleClick(event: MouseEvent) {
   const twin = target.querySelector('.digital-twin') as HTMLElement | null
   emit('click', props.device, (twin || target).getBoundingClientRect())
 }
+
+function handleRefresh() {
+  emit('refresh-data', props.device)
+}
 </script>
 
 <style scoped>
@@ -113,7 +131,7 @@ function handleClick(event: MouseEvent) {
   border: var(--glass-border);
   border-radius: var(--glass-radius);
   padding: 16px;
-  min-width: 218px;
+  min-width: 240px;
   cursor: pointer;
   box-shadow: var(--glass-shadow), var(--glass-inner-shadow);
   transition:
@@ -212,13 +230,16 @@ function handleClick(event: MouseEvent) {
   opacity: 0;
 }
 
+.device-overview-card--refreshing .device-overview-card__data-item {
+  border-color: rgba(34, 211, 238, 0.22);
+}
+
 .device-overview-card__name {
   font-family: var(--font-body, 'Inter', 'Plus Jakarta Sans', sans-serif);
   font-size: 14px;
   font-weight: 700;
   color: var(--text-primary, #e8ecf4);
   margin-bottom: 4px;
-  padding-left: 78px;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -231,7 +252,6 @@ function handleClick(event: MouseEvent) {
   font-size: 10px;
   color: var(--text-disabled, #4b5563);
   margin-bottom: 10px;
-  padding-left: 78px;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -263,6 +283,8 @@ function handleClick(event: MouseEvent) {
 }
 
 .device-overview-card__data-item {
+  appearance: none;
+  width: 100%;
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -271,6 +293,22 @@ function handleClick(event: MouseEvent) {
   border-radius: 14px;
   background: rgba(255, 255, 255, 0.04);
   border: 1px solid rgba(255, 255, 255, 0.08);
+  color: inherit;
+  cursor: pointer;
+  transition:
+    background var(--transition-fast, 150ms ease),
+    border-color var(--transition-fast, 150ms ease),
+    transform var(--transition-fast, 150ms ease);
+}
+
+.device-overview-card__data-item:hover:not(:disabled) {
+  background: rgba(34, 211, 238, 0.08);
+  border-color: rgba(34, 211, 238, 0.24);
+  transform: translateX(2px);
+}
+
+.device-overview-card__data-item:disabled {
+  cursor: wait;
 }
 
 .device-overview-card__data-label {
@@ -298,7 +336,7 @@ function handleClick(event: MouseEvent) {
 
   .device-overview-card__name,
   .device-overview-card__id {
-    padding-left: 66px;
+    padding-left: 0;
   }
 }
 </style>

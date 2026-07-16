@@ -1,6 +1,6 @@
 <!-- Control.vue -->
 <!-- 控制面板页 -->
-<!-- 左侧设备列表 + 右侧控制区（灯光/继电器/蜂鸣器/系统控制/日志） -->
+<!-- 左侧设备列表 + 右侧控制区（灯光/消息通知/系统控制/日志） -->
 <!-- 设备离线时所有控件置灰，禁止操作 -->
 <template>
   <div class="control-page">
@@ -78,8 +78,8 @@
                 <strong>{{ lightState.on ? `${lightState.brightness}%` : 'OFF' }}</strong>
               </div>
               <div class="twin-metric">
-                <span>蜂鸣器</span>
-                <strong>{{ buzzerState ? 'ON' : 'OFF' }}</strong>
+                <span>微信通知</span>
+                <strong>{{ wechatNotifyState ? 'ON' : 'OFF' }}</strong>
               </div>
               <div class="twin-metric">
                 <span>专注模式</span>
@@ -91,9 +91,10 @@
 
         <section class="control-twin-stage" :class="{ 'control-twin-stage--hidden': twinLaunchOverlay }">
           <div ref="centralTwinRef" class="control-twin-stage__model">
-            <DigitalTwinPlaceholder
+            <GlbCubeModel
               :label="currentDevice.device_name"
               :offline="!isOnline"
+              interactive
               show-label
               size="hero"
             />
@@ -114,18 +115,18 @@
                 :model-value="lightState"
                 @update:model-value="Object.assign(lightState, $event)"
                 :disabled="!isOnline"
+                :loading="toggleLoading.light"
               />
             </div>
           </div>
 
           <div class="control-panel">
             <div class="control-panel__header">
-              <span class="control-panel__title">继电器与蜂鸣器</span>
+              <span class="control-panel__title">开关设置</span>
             </div>
             <div class="control-panel__body control-panel__body--toggles">
-              <ControlToggle v-model="relayState.relay_1" label="继电器1 (主灯)" :disabled="!isOnline" :loading="toggleLoading.relay_1" />
-              <ControlToggle v-model="relayState.relay_2" label="继电器2 (备用)" :disabled="!isOnline" :loading="toggleLoading.relay_2" />
-              <ControlToggle v-model="buzzerState" label="蜂鸣器 (报警)" :disabled="!isOnline" :loading="toggleLoading.buzzer" />
+              <ControlToggle v-model="wechatNotifyState" label="微信消息通知" :disabled="!isOnline" :loading="toggleLoading.wechat_notify" />
+              <ControlToggle v-model="autoScreenBrightness" label="自动屏幕亮度" :disabled="!isOnline" :loading="toggleLoading.auto_screen_brightness" />
             </div>
           </div>
 
@@ -138,9 +139,9 @@
               <div class="slider-control">
                 <span class="slider-control__label">屏幕亮度</span>
                 <div class="slider-control__slider">
-                  <el-slider v-model="screenBrightness" :min="0" :max="100" :disabled="!isOnline" :show-tooltip="true" @change="handleScreenBrightnessChange" />
+                  <el-slider v-model="screenBrightness" :min="0" :max="100" :disabled="!isOnline || autoScreenBrightness" :show-tooltip="true" @change="handleScreenBrightnessChange" />
                 </div>
-                <span class="slider-control__value">{{ screenBrightness }}%</span>
+                <span class="slider-control__value">{{ autoScreenBrightness ? '自动' : `${screenBrightness}%` }}</span>
               </div>
             </div>
           </div>
@@ -151,7 +152,7 @@
         <div class="control-panel">
           <div class="control-panel__header">
             <span class="control-panel__title">控制日志</span>
-            <span class="control-panel__subtitle">最近 {{ maxLogs }} 条</span>
+            <span class="control-panel__subtitle">近 3 天 · 最近 {{ maxLogs }} 条</span>
           </div>
           <div class="control-panel__body">
             <div v-if="controlLogs.length === 0" class="log-empty">暂无操作记录</div>
@@ -169,13 +170,13 @@
       </section>
     </template>
 
-    <DigitalTwinPlaceholder
+    <CubeSpinGifPreview
       v-if="twinLaunchOverlay"
       class="control-twin-launch"
       :class="{ 'control-twin-launch--settled': twinLaunchOverlay.settled }"
       :style="twinLaunchStyle"
       :label="currentDevice?.device_name || 'Twin Model'"
-      size="hero"
+      :offline="!isOnline"
     />
   </div>
 </template>
@@ -188,7 +189,8 @@ import { ArrowLeft, Monitor, WarningFilled } from '@element-plus/icons-vue'
 import DeviceStatusDot from '@/components/DeviceStatusDot.vue'
 import LightColorPicker from '@/components/LightColorPicker.vue'
 import ControlToggle from '@/components/ControlToggle.vue'
-import DigitalTwinPlaceholder from '@/components/brand/DigitalTwinPlaceholder.vue'
+import CubeSpinGifPreview from '@/components/brand/CubeSpinGifPreview.vue'
+import GlbCubeModel from '@/components/brand/GlbCubeModel.vue'
 import MineradioParticleStage from '@/components/brand/MineradioParticleStage.vue'
 import { useDeviceStore } from '@/store/device'
 import { sendControlCommand } from '@/api/device'
@@ -208,8 +210,10 @@ const twinLaunchOverlay = ref<{
   settled: boolean
 } | null>(null)
 
-// 最大日志条数
+// 最大展示日志条数；完整记录会在本地保留 3 天
 const maxLogs = 5
+const LOG_RETENTION_MS = 3 * 24 * 60 * 60 * 1000
+const CONTROL_LOG_STORAGE_PREFIX = 'tianmu:control-logs:'
 
 const airLegend = [
   { label: 'O2', name: '氧气', color: '#a3e635' },
@@ -244,39 +248,35 @@ const twinLaunchStyle = computed(() => {
 // === 灯光状态 ===
 interface LightValue {
   on: boolean
-  color: string
+  colorTemperature: number
   brightness: number
 }
 const lightState = reactive<LightValue>({
   on: false,
-  color: '#FFFFFF',
+  colorTemperature: 3000,
   brightness: 80,
 })
 
-// === 继电器状态 ===
-const relayState = reactive({
-  relay_1: false,
-  relay_2: false,
-})
-
-// === 蜂鸣器状态 ===
-const buzzerState = ref(false)
+// === 微信消息通知状态 ===
+const wechatNotifyState = ref(false)
 
 // === 系统控制 ===
 const focusMode = ref(false)
 const screenBrightness = ref(60)
+const autoScreenBrightness = ref(false)
 
 // === Toggle 加载状态 ===
 const toggleLoading = reactive({
-  relay_1: false,
-  relay_2: false,
-  buzzer: false,
+  light: false,
+  wechat_notify: false,
+  auto_screen_brightness: false,
   focus_mode: false,
 })
 
 // === 控制日志 ===
 interface ControlLog {
   id: number
+  timestamp: number
   time: string
   description: string
   status: 'success' | 'error'
@@ -284,21 +284,94 @@ interface ControlLog {
 const controlLogs = ref<ControlLog[]>([])
 let logIdCounter = 0
 
+function controlLogStorageKey(deviceId: string) {
+  return `${CONTROL_LOG_STORAGE_PREFIX}${deviceId}`
+}
+
+function formatLogTime(timestamp: number) {
+  const date = new Date(timestamp)
+  const today = new Date()
+  const isToday = date.toDateString() === today.toDateString()
+  return isToday
+    ? date.toLocaleTimeString('zh-CN', { hour12: false })
+    : date.toLocaleString('zh-CN', {
+        month: '2-digit',
+        day: '2-digit',
+        hour: '2-digit',
+        minute: '2-digit',
+        hour12: false,
+      })
+}
+
+function normalizeLogs(rawLogs: unknown): ControlLog[] {
+  if (!Array.isArray(rawLogs)) return []
+  const cutoff = Date.now() - LOG_RETENTION_MS
+
+  return rawLogs
+    .map((log) => {
+      const item = log as Partial<ControlLog>
+      const timestamp =
+        typeof item.timestamp === 'number' && Number.isFinite(item.timestamp)
+          ? item.timestamp
+          : 0
+
+      if (!timestamp || timestamp < cutoff) return null
+
+      return {
+        id: typeof item.id === 'number' ? item.id : timestamp,
+        timestamp,
+        time: formatLogTime(timestamp),
+        description: typeof item.description === 'string' ? item.description : '',
+        status: item.status === 'error' ? 'error' : 'success',
+      } satisfies ControlLog
+    })
+    .filter((log): log is ControlLog => Boolean(log && log.description))
+    .sort((a, b) => b.timestamp - a.timestamp)
+}
+
+function readStoredControlLogs(deviceId: string): ControlLog[] {
+  if (!deviceId) return []
+  try {
+    const raw = window.localStorage.getItem(controlLogStorageKey(deviceId))
+    return normalizeLogs(raw ? JSON.parse(raw) : [])
+  } catch {
+    return []
+  }
+}
+
+function saveStoredControlLogs(deviceId: string, logs: ControlLog[]) {
+  if (!deviceId) return
+  try {
+    window.localStorage.setItem(controlLogStorageKey(deviceId), JSON.stringify(logs))
+  } catch {
+    // localStorage 满或不可用时，不影响控制功能
+  }
+}
+
+function loadControlLogs(deviceId: string) {
+  const logs = readStoredControlLogs(deviceId)
+  controlLogs.value = logs.slice(0, maxLogs)
+  logIdCounter = Math.max(logIdCounter, ...logs.map((log) => log.id), 0)
+  saveStoredControlLogs(deviceId, logs)
+}
+
 /**
  * 添加控制日志
  */
 function addLog(description: string, status: 'success' | 'error') {
+  if (!selectedDeviceId.value) return
   const now = new Date()
-  const time = now.toLocaleTimeString('zh-CN', { hour12: false })
-  controlLogs.value.unshift({
+  const timestamp = now.getTime()
+  const nextLog: ControlLog = {
     id: ++logIdCounter,
-    time,
+    timestamp,
+    time: formatLogTime(timestamp),
     description,
     status,
-  })
-  if (controlLogs.value.length > maxLogs) {
-    controlLogs.value = controlLogs.value.slice(0, maxLogs)
   }
+  const logs = normalizeLogs([nextLog, ...readStoredControlLogs(selectedDeviceId.value)])
+  controlLogs.value = logs.slice(0, maxLogs)
+  saveStoredControlLogs(selectedDeviceId.value, logs)
 }
 
 /**
@@ -317,31 +390,20 @@ async function sendCommand(command: string, value: string): Promise<boolean> {
   }
 }
 
-/**
- * 颜色名称映射
- */
-function colorName(hex: string): string {
-  const map: Record<string, string> = {
-    '#FFFFFF': '白',
-    '#EF4444': '红',
-    '#10B981': '绿',
-    '#3B82F6': '蓝',
-  }
-  return map[hex] || hex
-}
-
 // === 灯光控制监听 ===
 watch(() => lightState.on, async (newVal, oldVal) => {
   if (newVal === oldVal) return
+  toggleLoading.light = true
   const command = newVal ? 'on' : 'off'
   const ok = await sendCommand('light', command)
   addLog(`${newVal ? '开启' : '关闭'}灯光`, ok ? 'success' : 'error')
+  toggleLoading.light = false
 })
 
-watch(() => lightState.color, async (newVal, oldVal) => {
+watch(() => lightState.colorTemperature, async (newVal, oldVal) => {
   if (newVal === oldVal || !lightState.on) return
-  const ok = await sendCommand('light_color', newVal)
-  addLog(`灯光颜色 -> ${colorName(newVal)}`, ok ? 'success' : 'error')
+  const ok = await sendCommand('color_temperature', String(newVal))
+  addLog(`色温 -> ${newVal}K`, ok ? 'success' : 'error')
 })
 
 watch(() => lightState.brightness, async (newVal, oldVal) => {
@@ -350,30 +412,22 @@ watch(() => lightState.brightness, async (newVal, oldVal) => {
   addLog(`灯光亮度 -> ${newVal}%`, ok ? 'success' : 'error')
 })
 
-// === 继电器控制监听 ===
-watch(() => relayState.relay_1, async (newVal, oldVal) => {
+// === 微信消息通知监听 ===
+watch(wechatNotifyState, async (newVal, oldVal) => {
   if (newVal === oldVal) return
-  toggleLoading.relay_1 = true
-  const ok = await sendCommand('relay_1', newVal ? 'on' : 'off')
-  addLog(`继电器1(主灯) -> ${newVal ? 'ON' : 'OFF'}`, ok ? 'success' : 'error')
-  toggleLoading.relay_1 = false
+  toggleLoading.wechat_notify = true
+  const ok = await sendCommand('wechat_notify', newVal ? 'on' : 'off')
+  addLog(`${newVal ? '开启' : '关闭'}微信消息通知`, ok ? 'success' : 'error')
+  toggleLoading.wechat_notify = false
 })
 
-watch(() => relayState.relay_2, async (newVal, oldVal) => {
+// === 自动屏幕亮度监听 ===
+watch(autoScreenBrightness, async (newVal, oldVal) => {
   if (newVal === oldVal) return
-  toggleLoading.relay_2 = true
-  const ok = await sendCommand('relay_2', newVal ? 'on' : 'off')
-  addLog(`继电器2(备用) -> ${newVal ? 'ON' : 'OFF'}`, ok ? 'success' : 'error')
-  toggleLoading.relay_2 = false
-})
-
-// === 蜂鸣器控制监听 ===
-watch(buzzerState, async (newVal, oldVal) => {
-  if (newVal === oldVal) return
-  toggleLoading.buzzer = true
-  const ok = await sendCommand('buzzer', newVal ? 'on' : 'off')
-  addLog(`${newVal ? '开启' : '关闭'}蜂鸣器`, ok ? 'success' : 'error')
-  toggleLoading.buzzer = false
+  toggleLoading.auto_screen_brightness = true
+  const ok = await sendCommand('auto_screen_brightness', newVal ? 'on' : 'off')
+  addLog(`${newVal ? '开启' : '关闭'}自动屏幕亮度`, ok ? 'success' : 'error')
+  toggleLoading.auto_screen_brightness = false
 })
 
 // === 专注模式控制监听 ===
@@ -398,14 +452,13 @@ function selectDevice(deviceId: string) {
   selectedDeviceId.value = deviceId
   // 重置控制状态
   lightState.on = false
-  lightState.color = '#FFFFFF'
+  lightState.colorTemperature = 3000
   lightState.brightness = 80
-  relayState.relay_1 = false
-  relayState.relay_2 = false
-  buzzerState.value = false
+  wechatNotifyState.value = false
+  autoScreenBrightness.value = false
   focusMode.value = false
   screenBrightness.value = 60
-  controlLogs.value = []
+  loadControlLogs(deviceId)
 }
 
 async function playLaunchTransition() {
@@ -485,6 +538,9 @@ onMounted(async () => {
   } else if (deviceStore.devices.length > 0) {
     // 默认选中第一个设备
     selectedDeviceId.value = deviceStore.devices[0]?.device_id ?? ''
+  }
+  if (selectedDeviceId.value) {
+    loadControlLogs(selectedDeviceId.value)
   }
   await playLaunchTransition()
 })
@@ -669,6 +725,11 @@ onMounted(async () => {
 
 /* 离线提示 — Glass Warning */
 .control-offline-tip {
+  position: absolute;
+  top: 122px;
+  left: 24px;
+  right: 24px;
+  z-index: 12;
   display: flex;
   align-items: center;
   gap: 8px;
@@ -681,6 +742,7 @@ onMounted(async () => {
   font-weight: 500;
   backdrop-filter: blur(12px) saturate(1.4);
   -webkit-backdrop-filter: blur(12px) saturate(1.4);
+  box-shadow: 0 12px 28px rgba(239, 68, 68, 0.08), var(--glass-inner-shadow);
 }
 
 /* ========== 控制面板网格 ========== */
@@ -1150,6 +1212,8 @@ onMounted(async () => {
 }
 
 .control-twin-launch {
+  --twin-size: 100%;
+
   position: fixed;
   z-index: 999;
   pointer-events: none;

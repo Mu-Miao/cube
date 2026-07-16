@@ -6,6 +6,7 @@
 import { createRouter, createWebHistory } from 'vue-router'
 import { useAuthStore } from '@/store/auth'
 import { isDemoMode } from '@/utils/demoMode'
+import { routeComponentLoaders } from './routeLoaders'
 
 const router = createRouter({
   // 使用 HTML5 History 模式（无 # 号的路由）
@@ -38,37 +39,37 @@ const router = createRouter({
         {
           path: 'dashboard',
           name: 'dashboard',
-          component: () => import('@/views/Dashboard.vue'),
+          component: routeComponentLoaders['/dashboard'],
           meta: { title: '控制台' },
         },
         {
           path: 'devices',
           name: 'devices',
-          component: () => import('@/views/Devices.vue'),
+          component: routeComponentLoaders['/devices'],
           meta: { title: '设备管理' },
         },
         {
           path: 'control',
           name: 'control',
-          component: () => import('@/views/Control.vue'),
+          component: routeComponentLoaders['/control'],
           meta: { title: '控制面板' },
         },
         {
           path: 'ai-analysis',
           name: 'ai-analysis',
-          component: () => import('@/views/AiAnalysis.vue'),
+          component: routeComponentLoaders['/ai-analysis'],
           meta: { title: 'AI 分析' },
         },
         {
           path: 'logs',
           name: 'logs',
-          component: () => import('@/views/LogCenter.vue'),
+          component: routeComponentLoaders['/logs'],
           meta: { title: '日志中心' },
         },
         {
           path: 'admin',
           name: 'admin',
-          component: () => import('@/views/AdminPanel.vue'),
+          component: routeComponentLoaders['/admin'],
           meta: { title: '管理员后台' },
         },
       ],

@@ -23,6 +23,7 @@
     "element-plus": "^2.13.7",
     "konva": "^10.2.5",
     "pinia": "^3.0.4",
+    "three": "^0.185.1",
     "vue": "^3.5.32",
     "vue-konva": "^3.4.0",
     "vue-router": "^5.0.4"
@@ -32,6 +33,7 @@
     "@tsconfig/node24": "^24.0.4",
     "@types/jsdom": "^28.0.1",
     "@types/node": "^24.12.2",
+    "@types/three": "^0.185.1",
     "@vitejs/plugin-vue": "^6.0.6",
     "@vitejs/plugin-vue-jsx": "^5.1.5",
     "@vitest/eslint-plugin": "^1.6.16",

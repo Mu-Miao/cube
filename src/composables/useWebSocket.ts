@@ -21,6 +21,18 @@ export function useWebSocket(url: string) {
   let manuallyDisconnected = false
   const MAX_RECONNECT_DELAY = 30000
 
+  function resolveWebSocketBaseUrl() {
+    const configured = import.meta.env.VITE_WS_BASE_URL as string | undefined
+    const isBrowserLocalhost = ['localhost', '127.0.0.1'].includes(window.location.hostname)
+
+    if (configured && (isBrowserLocalhost || !configured.includes('localhost'))) {
+      return configured.replace(/\/$/, '')
+    }
+
+    const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:'
+    return `${protocol}//${window.location.host}`
+  }
+
   function clearReconnectTimer() {
     if (reconnectTimer !== null) {
       window.clearTimeout(reconnectTimer)
@@ -64,7 +76,7 @@ export function useWebSocket(url: string) {
     }
 
     // 真实模式：创建 WebSocket 连接
-    const wsUrl = `${import.meta.env.VITE_WS_BASE_URL || 'ws://localhost:8000'}${url}`
+    const wsUrl = `${resolveWebSocketBaseUrl()}${url}`
     if (ws.value?.readyState === WebSocket.OPEN || ws.value?.readyState === WebSocket.CONNECTING) {
       return
     }

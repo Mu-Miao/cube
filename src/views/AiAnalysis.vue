@@ -516,9 +516,20 @@ async function ensureDeviceSelected() {
   try {
     const list = await getDeviceList()
     if (list?.length) {
-      const firstDevice = list[0]
-      if (firstDevice) {
-        deviceStore.selectDevice(firstDevice.device_id)
+      deviceStore.setDevices(list)
+      const candidates = [
+        ...list.filter((device) => device.status === 'online'),
+        ...list.filter((device) => device.status !== 'online'),
+      ]
+      for (const device of candidates) {
+        const data = await getLatestData(device.device_id).catch(() => null)
+        if (data) {
+          deviceStore.selectDevice(device.device_id)
+          return
+        }
+      }
+      if (candidates[0]) {
+        deviceStore.selectDevice(candidates[0].device_id)
       }
     }
   } catch {

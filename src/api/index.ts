@@ -24,6 +24,15 @@ service.interceptors.request.use(
       const method = config.method?.toUpperCase()
       const params = config.params as { force_llm?: boolean } | undefined
 
+      // 认证接口必须允许真实请求通过，否则用户从演示模式回到登录页时会被 mock 拦截。
+      if (url.includes('/auth/')) {
+        const token = localStorage.getItem('token')
+        if (token) {
+          config.headers.Authorization = `Bearer ${token}`
+        }
+        return config
+      }
+
       if (url.includes('/ai/') && params?.force_llm) {
         return Promise.reject({
           response: {

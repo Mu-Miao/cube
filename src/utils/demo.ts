@@ -38,6 +38,7 @@ const sensorBase = {
   humidity: 60,       // 湿度基础值 60%RH
   illuminance: 450,   // 光照基础值 450lx
   aqi: 75,            // AQI 基础值
+  pm25: 22,           // PM2.5 估算值（μg/m³）
   eco2: 520,          // CO2 基础值 520ppm
   tvoc: 120,          // TVOC 基础值
   mold_risk: 1,       // 霉菌风险 0-3
@@ -51,6 +52,7 @@ const sensorRange = {
   humidity:     { min: 50, max: 70, step: 0.5 },     // 湿度在 50-70%RH 之间波动
   illuminance:  { min: 300, max: 600, step: 15 },    // 光照在 300-600lx 之间波动
   aqi:          { min: 50, max: 100, step: 3 },      // AQI 在 50-100 之间波动
+  pm25:         { min: 8, max: 55, step: 2 },        // PM2.5 估算值在 8-55 μg/m³ 之间波动
   eco2:         { min: 400, max: 650, step: 10 },    // CO2 在 400-650ppm 之间波动
   tvoc:         { min: 80, max: 180, step: 5 },      // TVOC 在 80-180 之间波动
   mold_risk:    { min: 0, max: 3, step: 1 },         // 霉菌风险 0-3
@@ -91,6 +93,7 @@ export function generateMockSensorData(deviceId?: string): Record<string, unknow
     humidity: Math.round(currentSensorValues.humidity * 10) / 10,
     illuminance: Math.round(currentSensorValues.illuminance),
     aqi: Math.round(currentSensorValues.aqi),
+    pm25: Math.round(currentSensorValues.pm25 * 10) / 10,
     eco2: Math.round(currentSensorValues.eco2),
     tvoc: Math.round(currentSensorValues.tvoc),
     mold_risk: Math.round(currentSensorValues.mold_risk),

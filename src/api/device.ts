@@ -56,8 +56,8 @@ export interface SensorData {
 
 /** 控制指令请求参数 */
 export interface ControlCommand {
-  command: string  // 指令名称（light, buzzer, relay_1 等）
-  value: string    // 指令值（on/off, 颜色, 亮度 等）
+  command: string  // 指令名称（light, color_temperature, wechat_notify, auto_screen_brightness 等）
+  value: string    // 指令值（on/off, 色温, 亮度 等）
 }
 
 /**
