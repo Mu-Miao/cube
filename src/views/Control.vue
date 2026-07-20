@@ -19,8 +19,10 @@
         class="control-air-stage"
         embedded
         variant="hero"
-        :density="0.92"
-        :intensity="isOnline ? 0.92 : 0.48"
+        :density="0.18"
+        :fps="24"
+        :intensity="isOnline ? 0.36 : 0.18"
+        :show-labels="false"
       />
 
       <header class="control-titlebar">
@@ -53,7 +55,7 @@
           <div class="control-panel control-panel--compact">
             <div class="control-panel__header">
               <span class="control-panel__title">空气成分图例</span>
-              <span class="control-panel__subtitle">实时粒子层</span>
+              <span class="control-panel__subtitle">轻量粒子层</span>
             </div>
             <div class="air-legend">
               <div v-for="item in airLegend" :key="item.label" class="air-legend__item">
@@ -91,13 +93,19 @@
 
         <section class="control-twin-stage" :class="{ 'control-twin-stage--hidden': twinLaunchOverlay }">
           <div ref="centralTwinRef" class="control-twin-stage__model">
-            <GlbCubeModel
-              :label="currentDevice.device_name"
-              :offline="!isOnline"
-              interactive
-              show-label
-              size="hero"
-            />
+            <div class="control-twin-lite" :class="{ 'control-twin-lite--offline': !isOnline }" :aria-label="currentDevice.device_name">
+              <div class="control-twin-lite__glow" aria-hidden="true"></div>
+              <div class="control-twin-lite__visual">
+                <img class="control-twin-lite__image" src="/smart-cube-transparent.png" alt="智能桌面魔方模型预览" />
+                <div class="control-twin-lite__screen" aria-label="魔方屏幕实时数据">
+                  <HardwareTwinScreen :data="latestSensorData" :online="isOnline" :focus="focusMode" />
+                </div>
+              </div>
+              <div class="control-twin-lite__label">
+                <span>{{ currentDevice.device_name }}</span>
+                <small>{{ isOnline ? 'LIGHTWEIGHT TWIN' : 'OFFLINE' }}</small>
+              </div>
+            </div>
           </div>
         </section>
 
@@ -182,7 +190,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, reactive, computed, watch, onMounted, nextTick } from 'vue'
+import { ref, reactive, computed, watch, onMounted, onUnmounted, nextTick } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import { ArrowLeft, Monitor, WarningFilled } from '@element-plus/icons-vue'
@@ -190,11 +198,10 @@ import DeviceStatusDot from '@/components/DeviceStatusDot.vue'
 import LightColorPicker from '@/components/LightColorPicker.vue'
 import ControlToggle from '@/components/ControlToggle.vue'
 import CubeSpinGifPreview from '@/components/brand/CubeSpinGifPreview.vue'
-import GlbCubeModel from '@/components/brand/GlbCubeModel.vue'
+import HardwareTwinScreen from '@/components/brand/HardwareTwinScreen.vue'
 import MineradioParticleStage from '@/components/brand/MineradioParticleStage.vue'
 import { useDeviceStore } from '@/store/device'
-import { sendControlCommand } from '@/api/device'
-import { getDeviceList } from '@/api/device'
+import { getDeviceList, getLatestData, sendControlCommand, type SensorData } from '@/api/device'
 defineOptions({ name: 'ControlPage' })
 
 const route = useRoute()
@@ -233,6 +240,9 @@ const currentDevice = computed(() => {
 const isOnline = computed(() => {
   return currentDevice.value?.status === 'online'
 })
+
+const latestSensorData = ref<SensorData | null>(null)
+let sensorRefreshTimer: ReturnType<typeof window.setInterval> | undefined
 
 const twinLaunchStyle = computed(() => {
   if (!twinLaunchOverlay.value) return undefined
@@ -459,6 +469,7 @@ function selectDevice(deviceId: string) {
   focusMode.value = false
   screenBrightness.value = 60
   loadControlLogs(deviceId)
+  void fetchLatestSensorData(deviceId)
 }
 
 async function playLaunchTransition() {
@@ -513,7 +524,7 @@ function goBackToDashboard() {
       }),
     )
   }
-  router.push({ path: '/dashboard', query: route.query.demo ? { demo: route.query.demo } : undefined })
+  router.push({ path: '/teen/dashboard', query: route.query.demo ? { demo: route.query.demo } : undefined })
 }
 
 /**
@@ -525,6 +536,18 @@ async function fetchDevices() {
     deviceStore.setDevices(res || [])
   } catch {
     // 忽略错误
+  }
+}
+
+async function fetchLatestSensorData(deviceId: string) {
+  if (!deviceId) {
+    latestSensorData.value = null
+    return
+  }
+  try {
+    latestSensorData.value = await getLatestData(deviceId)
+  } catch {
+    latestSensorData.value = null
   }
 }
 
@@ -541,8 +564,18 @@ onMounted(async () => {
   }
   if (selectedDeviceId.value) {
     loadControlLogs(selectedDeviceId.value)
+    await fetchLatestSensorData(selectedDeviceId.value)
   }
+  sensorRefreshTimer = window.setInterval(() => {
+    if (selectedDeviceId.value && isOnline.value) {
+      void fetchLatestSensorData(selectedDeviceId.value)
+    }
+  }, 10000)
   await playLaunchTransition()
+})
+
+onUnmounted(() => {
+  if (sensorRefreshTimer) window.clearInterval(sensorRefreshTimer)
 })
 </script>
 
@@ -1112,20 +1145,112 @@ onMounted(async () => {
     radial-gradient(circle, rgba(34, 211, 238, 0.15), transparent 60%),
     conic-gradient(from 120deg, transparent, rgba(163, 230, 53, 0.16), transparent, rgba(34, 211, 238, 0.14), transparent);
   filter: blur(1px);
-  animation: twin-platform-turn 12s linear infinite;
+  animation: twin-platform-turn 24s linear infinite;
 }
 
 .control-twin-stage__model {
   position: relative;
   z-index: 2;
-  width: min(42vw, 420px);
+  width: min(50vw, 560px);
   aspect-ratio: 1;
   display: grid;
   place-items: center;
 }
 
-.control-twin-stage__model :deep(.digital-twin) {
+.control-twin-stage__model :deep(.digital-twin),
+.control-twin-lite {
   width: 100%;
+}
+
+.control-twin-lite {
+  position: relative;
+  aspect-ratio: 1;
+  display: grid;
+  place-items: center;
+  isolation: isolate;
+}
+
+.control-twin-lite__glow {
+  position: absolute;
+  inset: 10%;
+  z-index: -1;
+  border-radius: 50%;
+  background:
+    radial-gradient(circle, rgba(34, 211, 238, 0.22), transparent 56%),
+    radial-gradient(circle at 55% 64%, rgba(163, 230, 53, 0.12), transparent 50%);
+  filter: blur(18px);
+}
+
+.control-twin-lite__visual {
+  position: relative;
+  width: 100%;
+  display: grid;
+  place-items: center;
+}
+
+.control-twin-lite__image {
+  width: 100%;
+  height: auto;
+  display: block;
+  object-fit: contain;
+  filter: drop-shadow(0 26px 46px rgba(0, 0, 0, 0.26));
+  transform: none;
+}
+
+.control-twin-lite__screen {
+  position: absolute;
+  left: 50.24%;
+  top: 52.07%;
+  width: 33.84%;
+  min-width: 128px;
+  aspect-ratio: 1.31;
+  transform: translate(-50%, -50%);
+  display: block;
+  padding: 0;
+  overflow: hidden;
+  background: #0c1024;
+  border: 0;
+  border-radius: 3px;
+  box-shadow: inset 0 0 10px rgba(0, 0, 0, 0.42);
+  pointer-events: none;
+}
+
+.control-twin-lite__label {
+  position: absolute;
+  left: 50%;
+  bottom: 5%;
+  transform: translateX(-50%);
+  display: grid;
+  gap: 4px;
+  justify-items: center;
+  width: max-content;
+  max-width: 80%;
+  padding: 8px 12px;
+  border: 1px solid rgba(216, 242, 255, 0.12);
+  border-radius: 999px;
+  color: var(--text-secondary);
+  background: rgba(4, 18, 40, 0.24);
+  backdrop-filter: blur(18px);
+  -webkit-backdrop-filter: blur(18px);
+}
+
+.control-twin-lite__label span {
+  max-width: 18em;
+  overflow: hidden;
+  color: var(--text-primary);
+  font: 600 12px/1 var(--font-body);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.control-twin-lite__label small {
+  color: rgba(163, 230, 53, 0.72);
+  font: 600 10px/1 var(--font-mono);
+}
+
+.control-twin-lite--offline {
+  filter: grayscale(0.65);
+  opacity: 0.66;
 }
 
 .control-panel {

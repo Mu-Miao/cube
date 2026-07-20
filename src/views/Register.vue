@@ -8,7 +8,7 @@
       <!-- Logo + 标题 -->
       <div class="register-header">
         <div class="register-logo">
-          <img :src="cubeLogoImg" alt="智能桌面魔方 Logo" class="cube-icon" />
+          <img :src="cubeLogoImg" alt="天幕智创 TMZC Logo" class="cube-icon" />
         </div>
         <h2 class="register-title">注册账号</h2>
       </div>
@@ -75,7 +75,7 @@ import { useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import type { FormInstance, FormRules } from 'element-plus'
 import { register } from '@/api/auth'
-import cubeLogoImg from '@/assets/brand/cube-logo.png'
+import cubeLogoImg from '@/assets/brand/tmzc-logo.svg'
 
 defineOptions({
   name: 'RegisterPage',

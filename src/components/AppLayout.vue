@@ -10,9 +10,9 @@
       <div class="sidebar-logo">
         <div class="logo-bar"></div>
         <div class="logo-icon">
-          <img :src="cubeLogoImg" alt="魔方 Logo" class="logo-image" />
+          <img :src="cubeLogoImg" alt="天幕智创 TMZC Logo" class="logo-image" />
         </div>
-        <span class="logo-text">魔方</span>
+        <span class="logo-text">智能魔方</span>
       </div>
 
       <!-- 导航菜单 -->
@@ -60,12 +60,7 @@
           </span>
         </div>
         <div class="top-bar-right">
-          <!-- 搜索框占位 -->
-          <div class="search-placeholder">
-            <Search class="search-icon" />
-            <span>搜索...</span>
-            <kbd class="search-kbd">⌘K</kbd>
-          </div>
+          <VersionSwitcher variant="toolbar" />
           <!-- 通知图标 -->
           <button class="icon-btn" title="通知">
             <Bell />
@@ -114,11 +109,9 @@ import {
   Cpu,
   Setting,
   DataAnalysis,
-  Search,
   Bell,
   SwitchButton,
   Tickets,
-  UserFilled,
 } from '@element-plus/icons-vue'
 import { useAuthStore } from '@/store/auth'
 import { isDemoMode } from '@/utils/demo'
@@ -126,8 +119,9 @@ import { routeComponentLoaders, type PreloadableRoutePath } from '@/router/route
 import MascotCompanion from '@/components/brand/MascotCompanion.vue'
 import MineradioParticleStage from '@/components/brand/MineradioParticleStage.vue'
 import ChatPanel from '@/components/ChatPanel.vue'
+import VersionSwitcher from '@/components/VersionSwitcher.vue'
 import mascotNormalImg from '@/assets/mascot/role_normal.webp'
-import cubeLogoImg from '@/assets/brand/cube-logo.png'
+import cubeLogoImg from '@/assets/brand/tmzc-logo.svg'
 
 defineOptions({ name: 'AppLayout' })
 
@@ -190,19 +184,13 @@ watch(
 
 // 菜单项配置
 const baseMenuItems = [
-  { path: '/dashboard', label: '控制台', icon: Monitor },
-  { path: '/devices', label: '设备管理', icon: Cpu },
-  { path: '/control', label: '控制面板', icon: Setting },
-  { path: '/ai-analysis', label: 'AI 分析', icon: DataAnalysis },
-  { path: '/logs', label: '日志中心', icon: Tickets },
+  { path: '/teen/dashboard', label: '控制台', icon: Monitor },
+  { path: '/teen/devices', label: '设备管理', icon: Cpu },
+  { path: '/teen/control', label: '控制面板', icon: Setting },
+  { path: '/teen/ai-analysis', label: 'AI 分析', icon: DataAnalysis },
+  { path: '/teen/logs', label: '日志中心', icon: Tickets },
 ]
-const menuItems = computed(() => {
-  const items = [...baseMenuItems]
-  if (authStore.isAdmin || demoMode) {
-    items.push({ path: '/admin', label: '管理员', icon: UserFilled })
-  }
-  return items
-})
+const menuItems = computed(() => baseMenuItems)
 
 function isPreloadableRoute(path: string): path is PreloadableRoutePath {
   return path in routeComponentLoaders
@@ -252,7 +240,6 @@ const breadcrumbs = computed(() => {
     control: '控制面板',
     'ai-analysis': 'AI 分析',
     logs: '日志中心',
-    admin: '管理员后台',
   }
   const name = route.name as string
   if (name && routeNameMap[name]) {
@@ -952,16 +939,142 @@ function handleLogout() {
 }
 
 @media (max-width: 520px) {
-  .top-bar {
-    padding-inline: 16px;
+  .app-layout {
+    display: block;
+    width: 100%;
+    min-width: 0;
+    overflow-x: clip;
   }
 
-  .top-bar-right {
+  .sidebar {
+    position: fixed;
+    left: max(10px, env(safe-area-inset-left));
+    right: max(10px, env(safe-area-inset-right));
+    top: auto;
+    bottom: max(10px, env(safe-area-inset-bottom));
+    width: auto;
+    height: 70px;
+    z-index: 180;
+    display: block;
+    padding: 8px;
+    border-radius: 22px;
+    overflow: visible;
+    transform: none;
+    animation: none;
+    background:
+      linear-gradient(145deg, rgba(255, 255, 255, 0.09), rgba(4, 17, 38, 0.48)),
+      rgba(7, 14, 28, 0.78);
+    box-shadow:
+      0 18px 54px rgba(0, 0, 0, 0.38),
+      inset 0 1px 0 rgba(255, 255, 255, 0.22);
+  }
+
+  .sidebar::after,
+  .sidebar-logo,
+  .sidebar-footer {
     display: none;
   }
 
+  .sidebar-nav {
+    width: 100%;
+    height: 100%;
+    display: grid;
+    grid-template-columns: repeat(5, minmax(0, 1fr));
+    gap: 4px;
+    padding: 0;
+    overflow: visible;
+  }
+
+  .nav-item {
+    height: 54px;
+    min-width: 0;
+    display: grid;
+    grid-template-rows: 22px 16px;
+    place-items: center;
+    align-content: center;
+    gap: 3px;
+    margin: 0;
+    padding: 0 2px;
+    border-radius: 16px;
+    font-size: 11px;
+    line-height: 1;
+    animation: none;
+    transform: none;
+  }
+
+  .nav-item:hover {
+    transform: none;
+  }
+
+  .nav-item.active::before {
+    display: none;
+  }
+
+  .nav-icon {
+    width: 20px;
+    height: 20px;
+  }
+
+  .nav-label {
+    display: block;
+    max-width: 100%;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-size: 11px;
+  }
+
+  .main-area {
+    margin-left: 0;
+    width: 100%;
+    max-width: 100%;
+    min-width: 0;
+  }
+
+  .main-area--chat-open {
+    margin-right: 0 !important;
+  }
+
+  .top-bar {
+    top: 0;
+    height: 58px;
+    margin: 0;
+    padding-inline: 16px;
+    border-radius: 0;
+    border-inline: 0;
+    border-top: 0;
+    background:
+      linear-gradient(180deg, rgba(3, 12, 28, 0.94), rgba(3, 12, 28, 0.66));
+  }
+
+  .breadcrumb {
+    font-size: 13px;
+  }
+
+  .breadcrumb-item:not(:last-child),
+  .breadcrumb-separator {
+    display: none;
+  }
+
+  .top-bar-right {
+    display: flex;
+    gap: 8px;
+  }
+
+  .top-bar-right .icon-btn,
+  .top-bar-right .demo-tag {
+    display: none;
+  }
+
+  .top-bar-right :deep(.version-switcher__panel) {
+    right: 0;
+    width: min(282px, calc(100vw - 28px));
+  }
+
   .content-area {
-    padding: 24px 12px 16px;
+    padding: 18px 12px calc(94px + env(safe-area-inset-bottom));
+    width: 100%;
+    min-width: 0;
   }
 }
 </style>

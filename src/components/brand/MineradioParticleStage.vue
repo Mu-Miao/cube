@@ -17,13 +17,17 @@ const props = withDefaults(
     airData?: AirQualityData
     density?: number
     embedded?: boolean
+    fps?: number
     intensity?: number
+    showLabels?: boolean
     variant?: 'ambient' | 'hero' | 'login'
   }>(),
   {
     density: 1,
     embedded: false,
+    fps: 50,
     intensity: 0.72,
+    showLabels: true,
     variant: 'ambient',
   },
 )
@@ -78,7 +82,10 @@ let observer: IntersectionObserver | null = null
 
 // 最大渲染宽度：超出此宽度的屏幕以较低分辨率渲染、CSS 放大，保证帧率稳定
 const MAX_RENDER_WIDTH = 1440
-const TARGET_FRAME_INTERVAL = 15.5
+
+function getFrameInterval() {
+  return 1000 / Math.max(12, Math.min(60, props.fps))
+}
 
 const AIR_SPECIES: AirSpecies[] = [
   { label: 'O2', name: '氧气', color: '#a3e635', glow: 'rgba(163, 230, 53, 0.34)', baseWeight: 0.28 },
@@ -157,11 +164,12 @@ function pickSpecies(profile: SpeciesProfile[]) {
 
 function getTargetParticleCount() {
   const { particleMultiplier } = getAirProfile()
-  // 60fps 模式下保留空气质量驱动的数量变化，但把上限控制在可持续范围内。
+  // 保留空气质量驱动的数量变化，但低密度场景允许显著缩小粒子池。
   const baseCount = Math.round(
-    Math.min(150, Math.max(38, (width * height) / 17000) * particleMultiplier) * props.density,
+    Math.min(110, Math.max(24, (width * height) / 22000) * particleMultiplier) * props.density,
   )
-  return Math.max(28, baseCount)
+  const minimumCount = props.density <= 0.35 ? 10 : 22
+  return Math.max(minimumCount, baseCount)
 }
 
 function createParticle(index = particles.length): Particle {
@@ -308,7 +316,7 @@ function render(now: number) {
   if (!isVisible || !documentVisible) {
     return
   }
-  if (now - lastRenderAt < TARGET_FRAME_INTERVAL) return
+  if (now - lastRenderAt < getFrameInterval()) return
   lastRenderAt = now
 
   if (!ctx) return
@@ -335,9 +343,11 @@ function render(now: number) {
   ctx.fillRect(0, 0, width, height)
 
   // 轨道环
-  drawRing(elapsed, Math.min(width, height) * 0.24, -80, 0.11 * intensity, 186)
-  drawRing(elapsed + 1200, Math.min(width, height) * 0.34, 60, 0.08 * intensity, 82)
-  drawRing(elapsed + 2400, Math.min(width, height) * 0.46, 140, 0.055 * intensity, 262)
+  drawRing(elapsed, Math.min(width, height) * 0.24, -80, 0.09 * intensity, 186)
+  drawRing(elapsed + 1200, Math.min(width, height) * 0.34, 60, 0.065 * intensity, 82)
+  if (props.showLabels) {
+    drawRing(elapsed + 2400, Math.min(width, height) * 0.46, 140, 0.045 * intensity, 262)
+  }
 
   // 粒子：不同颜色和细小标签代表空气成分。
   ctx.shadowBlur = 0
@@ -368,15 +378,17 @@ function render(now: number) {
     ctx.fill()
     ctx.globalAlpha = 1
 
-    const labelAlpha = Math.max(0.1, Math.min(0.46, alpha * 0.96))
-    const fontSize = Math.max(6.6, Math.min(8.6, 7 * projected.scale + 1.6))
-    ctx.font = `500 ${fontSize}px "JetBrains Mono", ui-monospace, SFMono-Regular, monospace`
-    ctx.textAlign = 'left'
-    ctx.textBaseline = 'middle'
-    ctx.fillStyle = particle.species.color
-    ctx.globalAlpha = labelAlpha
-    ctx.fillText(particle.species.label, projected.x + size * 2.2 + 2, projected.y - size * 1.7)
-    ctx.globalAlpha = 1
+    if (props.showLabels) {
+      const labelAlpha = Math.max(0.1, Math.min(0.46, alpha * 0.96))
+      const fontSize = Math.max(6.6, Math.min(8.6, 7 * projected.scale + 1.6))
+      ctx.font = `500 ${fontSize}px "JetBrains Mono", ui-monospace, SFMono-Regular, monospace`
+      ctx.textAlign = 'left'
+      ctx.textBaseline = 'middle'
+      ctx.fillStyle = particle.species.color
+      ctx.globalAlpha = labelAlpha
+      ctx.fillText(particle.species.label, projected.x + size * 2.2 + 2, projected.y - size * 1.7)
+      ctx.globalAlpha = 1
+    }
   }
 }
 

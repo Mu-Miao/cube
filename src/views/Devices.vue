@@ -293,7 +293,7 @@ function goToControl(deviceId: string) {
   if (demoMode) {
     query.demo = 'true'
   }
-  router.push({ path: '/control', query })
+  router.push({ path: '/teen/control', query })
 }
 
 /**

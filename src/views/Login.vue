@@ -21,10 +21,10 @@
       <!-- Logo + 页面标题 -->
       <div class="login-header">
         <div class="login-logo">
-          <img :src="cubeLogoImg" alt="智能桌面魔方 Logo" class="cube-icon" />
+          <img :src="cubeLogoImg" alt="天幕智创 TMZC Logo" class="cube-icon" />
         </div>
         <h1 class="login-title">智能桌面魔方</h1>
-        <p class="login-subtitle">MVP Demo 系统</p>
+        <p class="login-subtitle">天幕智创 · 智能魔方系统</p>
       </div>
 
       <!-- 登录表单 -->
@@ -93,7 +93,7 @@ import { login } from '@/api/auth'
 import { disableDemoMode, enableDemoMode } from '@/utils/demo'
 import MascotCompanion from '@/components/brand/MascotCompanion.vue'
 import MineradioParticleStage from '@/components/brand/MineradioParticleStage.vue'
-import cubeLogoImg from '@/assets/brand/cube-logo.png'
+import cubeLogoImg from '@/assets/brand/tmzc-logo.svg'
 
 defineOptions({
   name: 'LoginPage',
@@ -137,7 +137,7 @@ async function handleLogin() {
       role: 'user',
     })
     ElMessage.success('登录成功')
-    await router.push('/dashboard')
+    await router.push('/teen/dashboard')
   } catch (err: unknown) {
     const error = err as { response?: { data?: { detail?: string; message?: string } } }
     const msg =
@@ -168,7 +168,7 @@ async function handleDemoLogin() {
     })
     ElMessage.success('已进入演示模式')
     // 携带 ?demo=true 参数跳转，确保页面识别演示模式
-    router.push('/dashboard?demo=true')
+    router.push('/teen/dashboard?demo=true')
   } finally {
     loading.value = false
   }

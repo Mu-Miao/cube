@@ -21,13 +21,18 @@ export default defineConfig(({ mode }) => {
       port: 5173,
       host: '0.0.0.0',
       strictPort: true,
-      allowedHosts: ['cube.mashutaba.best', 'api.cube.mashutaba.best'],
+      allowedHosts: ['tianmuzc.site', 'www.tianmuzc.site'],
       proxy: {
         '/api': {
           target: 'http://localhost:8000',
           changeOrigin: true,
         },
       },
+    },
+    preview: {
+      port: 4173,
+      host: '0.0.0.0',
+      allowedHosts: ['tianmuzc.site', 'www.tianmuzc.site'],
     },
   }
 })

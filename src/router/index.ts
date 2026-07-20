@@ -26,58 +26,88 @@ const router = createRouter({
       component: () => import('@/views/Register.vue'),
       meta: { requiresAuth: false },
     },
+    {
+      path: '/public',
+      name: 'public-version',
+      component: () => import('@/versions/public/App.vue'),
+      meta: { requiresAuth: false },
+    },
+    {
+      path: '/senior',
+      name: 'senior-version',
+      component: () => import('@/versions/senior/App.vue'),
+      meta: { requiresAuth: false },
+    },
     // 带布局的主页面（需要登录认证）
     {
-      path: '/',
+      path: '/teen',
       component: () => import('@/components/AppLayout.vue'),
       meta: { requiresAuth: true },
       children: [
         {
           path: '',
-          redirect: '/dashboard',
+          redirect: '/teen/dashboard',
         },
         {
           path: 'dashboard',
           name: 'dashboard',
-          component: routeComponentLoaders['/dashboard'],
+          component: routeComponentLoaders['/teen/dashboard'],
           meta: { title: '控制台' },
         },
         {
           path: 'devices',
           name: 'devices',
-          component: routeComponentLoaders['/devices'],
+          component: routeComponentLoaders['/teen/devices'],
           meta: { title: '设备管理' },
         },
         {
           path: 'control',
           name: 'control',
-          component: routeComponentLoaders['/control'],
+          component: routeComponentLoaders['/teen/control'],
           meta: { title: '控制面板' },
         },
         {
           path: 'ai-analysis',
           name: 'ai-analysis',
-          component: routeComponentLoaders['/ai-analysis'],
+          component: routeComponentLoaders['/teen/ai-analysis'],
           meta: { title: 'AI 分析' },
         },
         {
           path: 'logs',
           name: 'logs',
-          component: routeComponentLoaders['/logs'],
+          component: routeComponentLoaders['/teen/logs'],
           meta: { title: '日志中心' },
         },
-        {
-          path: 'admin',
-          name: 'admin',
-          component: routeComponentLoaders['/admin'],
-          meta: { title: '管理员后台' },
-        },
       ],
+    },
+    {
+      path: '/',
+      redirect: '/teen/dashboard',
+    },
+    {
+      path: '/dashboard',
+      redirect: '/teen/dashboard',
+    },
+    {
+      path: '/devices',
+      redirect: '/teen/devices',
+    },
+    {
+      path: '/control',
+      redirect: '/teen/control',
+    },
+    {
+      path: '/ai-analysis',
+      redirect: '/teen/ai-analysis',
+    },
+    {
+      path: '/logs',
+      redirect: '/teen/logs',
     },
     // 404 兜底：重定向到控制台
     {
       path: '/:pathMatch(.*)*',
-      redirect: '/dashboard',
+      redirect: '/teen/dashboard',
     },
   ],
 })
@@ -87,19 +117,24 @@ router.beforeEach((to) => {
   const authStore = useAuthStore()
   // 与 API、WebSocket 共用同一套演示模式判断，避免状态不一致。
   const isDemo = isDemoMode()
+  const storedToken = localStorage.getItem('token')
+
+  if (!authStore.isLoggedIn && storedToken) {
+    authStore.setAuth({
+      token: storedToken,
+      username: localStorage.getItem('username') || '用户',
+      role: (localStorage.getItem('role') as 'user' | 'admin') || 'user',
+    })
+  }
 
   // 需要认证但用户未登录：重定向到登录页
   if (to.meta.requiresAuth && !authStore.isLoggedIn && !isDemo) {
     return { name: 'login' }
   }
 
-  if (to.name === 'admin' && !authStore.isAdmin && !isDemo) {
-    return { path: '/dashboard' }
-  }
-
   // 已登录用户访问登录页或注册页：重定向到控制台
   if ((to.name === 'login' || to.name === 'register') && authStore.isLoggedIn) {
-    return { path: '/dashboard' }
+    return { path: '/teen/dashboard' }
   }
 })
 

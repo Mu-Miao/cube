@@ -21,8 +21,10 @@
         embedded
         variant="hero"
         :air-data="airParticleData"
-        :density="0.58"
-        :intensity="controlModeDevice.status === 'online' ? 0.72 : 0.38"
+        :density="0.18"
+        :fps="24"
+        :intensity="controlModeDevice.status === 'online' ? 0.36 : 0.18"
+        :show-labels="false"
       />
 
       <button class="dashboard-control-back" title="返回控制台" @click="leaveInlineControl">
@@ -46,7 +48,7 @@
         <aside class="dashboard-control-panel dashboard-control-panel--legend">
           <div class="dashboard-control-panel__header">
             <span>空气成分</span>
-            <small>实时粒子层</small>
+            <small>轻量粒子层</small>
           </div>
           <div class="dashboard-air-legend">
             <div v-for="item in airLegend" :key="item.label" class="dashboard-air-legend__item">
@@ -59,15 +61,26 @@
 
         <div class="dashboard-control-twin">
           <div class="dashboard-control-twin__halo"></div>
-          <GlbCubeModel
-            class="dashboard-control-twin__model"
-            :class="{ 'dashboard-control-twin__model--flight-hidden': twinFlightActive }"
-            :label="controlModeDevice.device_name"
-            :offline="controlModeDevice.status !== 'online'"
-            interactive
-            show-label
-            size="hero"
-          />
+          <div
+            class="dashboard-control-twin__model control-twin-lite"
+            :class="{
+              'dashboard-control-twin__model--flight-hidden': twinFlightActive,
+              'control-twin-lite--offline': controlModeDevice.status !== 'online',
+            }"
+            :aria-label="controlModeDevice.device_name"
+          >
+            <div class="control-twin-lite__glow" aria-hidden="true"></div>
+            <div class="control-twin-lite__visual">
+              <img class="control-twin-lite__image" src="/smart-cube-transparent.png" alt="智能桌面魔方模型预览" />
+              <div class="control-twin-lite__screen" aria-label="魔方屏幕实时数据">
+                <HardwareTwinScreen :data="sensorData" :online="controlModeDevice.status === 'online'" :focus="controlState.focus" />
+              </div>
+            </div>
+            <div class="control-twin-lite__label">
+              <span>{{ controlModeDevice.device_name }}</span>
+              <small>{{ controlModeDevice.status === 'online' ? 'LIGHTWEIGHT TWIN' : 'OFFLINE' }}</small>
+            </div>
+          </div>
         </div>
 
         <aside class="dashboard-control-panel dashboard-control-panel--actions">
@@ -379,7 +392,7 @@
 </template>
 
 <script setup lang="ts">
-import { defineAsyncComponent, ref, reactive, computed, onMounted, onUnmounted, watch, nextTick } from 'vue'
+import { ref, reactive, computed, onMounted, onUnmounted, watch, nextTick } from 'vue'
 import { ElMessage } from 'element-plus'
 import * as echarts from 'echarts'
 import DeviceOverviewCard from '@/components/DeviceOverviewCard.vue'
@@ -390,13 +403,12 @@ import GasAlertBanner from '@/components/GasAlertBanner.vue'
 import MascotCompanion from '@/components/brand/MascotCompanion.vue'
 import MineradioParticleStage from '@/components/brand/MineradioParticleStage.vue'
 import CubeSpinGifPreview from '@/components/brand/CubeSpinGifPreview.vue'
+import HardwareTwinScreen from '@/components/brand/HardwareTwinScreen.vue'
 import { getDeviceList, bindDevice, getLatestData, sendControlCommand } from '@/api/device'
 import { useWebSocket } from '@/composables/useWebSocket'
 import { useDeviceStore } from '@/store/device'
 
 defineOptions({ name: 'DashboardPage' })
-
-const GlbCubeModel = defineAsyncComponent(() => import('@/components/brand/GlbCubeModel.vue'))
 
 const deviceStore = useDeviceStore()
 
@@ -424,6 +436,7 @@ const twinFlightStyle = ref<Record<string, string>>({})
 const twinFlightLabel = ref('Twin Model')
 const twinFlightOffline = ref(false)
 let twinFlightCleanupTimer = 0
+let sensorPollingTimer = 0
 
 const airLegend = [
   { label: 'O2', name: '氧气', color: '#a3e635' },
@@ -704,9 +717,32 @@ async function fetchDevices() {
         fetchLatestData(target.device_id)
       }
     }
+    fetchDeviceCardData(list)
   } catch {
     ElMessage.error('获取设备列表失败')
   }
+}
+
+async function fetchDeviceCardData(devices = deviceStore.devices) {
+  const onlineDevices = devices.filter((device) => (
+    device.status === 'online' &&
+    device.device_id &&
+    device.device_id !== selectedDeviceId.value
+  ))
+
+  await Promise.all(onlineDevices.map(async (device) => {
+    try {
+      const data = await getLatestData(device.device_id)
+      if (!data) return
+      const cachedData = deviceDataCache[device.device_id] ?? (
+        deviceDataCache[device.device_id] = { temperature: null, humidity: null }
+      )
+      cachedData.temperature = data.temperature
+      cachedData.humidity = data.humidity
+    } catch {
+      // 单个设备暂无数据时不影响其它设备卡片显示。
+    }
+  }))
 }
 
 async function fetchLatestData(deviceId: string, showError = false) {
@@ -991,7 +1027,7 @@ async function enterInlineControl(deviceId: string, startRect?: DOMRect) {
   const device = deviceStore.devices.find((item) => item.device_id === deviceId)
   selectedDeviceId.value = deviceId
   deviceStore.selectDevice(deviceId)
-  setNavigationHighlight('/control')
+  setNavigationHighlight('/teen/control')
   fetchLatestData(deviceId)
   launchingDeviceId.value = deviceId
   controlContentVisible.value = false
@@ -1180,10 +1216,18 @@ onMounted(() => {
   ws.on('device_status', () => {
     fetchDevices()
   })
+
+  sensorPollingTimer = window.setInterval(() => {
+    if (selectedDeviceId.value && !refreshingDeviceId.value) {
+      fetchLatestData(selectedDeviceId.value)
+      fetchDeviceCardData()
+    }
+  }, 5000)
 })
 
 onUnmounted(() => {
   window.clearTimeout(twinFlightCleanupTimer)
+  window.clearInterval(sensorPollingTimer)
   setNavigationHighlight(null)
   ws.disconnect()
   if (chart) {
@@ -1867,7 +1911,8 @@ onUnmounted(() => {
 .dashboard-control-back,
 .dashboard-control-titlebar,
 .dashboard-control-panel,
-.dashboard-control-twin__halo {
+.dashboard-control-twin__halo,
+.control-twin-lite {
   opacity: 0;
 }
 
@@ -1887,6 +1932,10 @@ onUnmounted(() => {
   animation:
     control-fade-in 880ms ease 420ms both,
     twin-platform-turn 18s linear 420ms infinite;
+}
+
+.dashboard-control-mode--revealed .control-twin-lite {
+  animation: control-fade-in 880ms ease 420ms both;
 }
 
 .dashboard-control-mode--revealed .dashboard-control-panel {
@@ -2089,7 +2138,8 @@ onUnmounted(() => {
 .dashboard-control-twin__model {
   position: relative;
   z-index: 2;
-  width: min(42vw, 420px);
+  width: min(50vw, 560px);
+  aspect-ratio: 1;
   view-transition-name: active-twin;
   contain: layout;
   will-change: transform, opacity;
@@ -2097,6 +2147,96 @@ onUnmounted(() => {
 
 .dashboard-control-twin__model--flight-hidden {
   opacity: 0;
+}
+
+.control-twin-lite {
+  position: relative;
+  display: grid;
+  place-items: center;
+  isolation: isolate;
+}
+
+.control-twin-lite__glow {
+  position: absolute;
+  inset: 10%;
+  z-index: -1;
+  border-radius: 50%;
+  background:
+    radial-gradient(circle, rgba(34, 211, 238, 0.22), transparent 56%),
+    radial-gradient(circle at 55% 64%, rgba(163, 230, 53, 0.12), transparent 50%);
+  filter: blur(18px);
+}
+
+.control-twin-lite__visual {
+  position: relative;
+  width: 100%;
+  display: grid;
+  place-items: center;
+}
+
+.control-twin-lite__image {
+  width: 100%;
+  height: auto;
+  display: block;
+  object-fit: contain;
+  filter: drop-shadow(0 26px 46px rgba(0, 0, 0, 0.26));
+  transform: none;
+}
+
+.control-twin-lite__screen {
+  position: absolute;
+  left: 50.24%;
+  top: 52.07%;
+  width: 33.84%;
+  min-width: 128px;
+  aspect-ratio: 1.31;
+  transform: translate(-50%, -50%);
+  display: block;
+  padding: 0;
+  overflow: hidden;
+  background: #0c1024;
+  border: 0;
+  border-radius: 3px;
+  box-shadow: inset 0 0 10px rgba(0, 0, 0, 0.42);
+  pointer-events: none;
+}
+
+.control-twin-lite__label {
+  position: absolute;
+  left: 50%;
+  bottom: 5%;
+  transform: translateX(-50%);
+  display: grid;
+  gap: 4px;
+  justify-items: center;
+  width: max-content;
+  max-width: 80%;
+  padding: 8px 12px;
+  border: 1px solid rgba(216, 242, 255, 0.12);
+  border-radius: 999px;
+  color: var(--text-secondary);
+  background: rgba(4, 18, 40, 0.24);
+  backdrop-filter: blur(18px);
+  -webkit-backdrop-filter: blur(18px);
+}
+
+.control-twin-lite__label span {
+  max-width: 18em;
+  overflow: hidden;
+  color: var(--text-primary);
+  font: 600 12px/1 var(--font-body);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.control-twin-lite__label small {
+  color: rgba(163, 230, 53, 0.72);
+  font: 600 10px/1 var(--font-mono);
+}
+
+.control-twin-lite--offline {
+  filter: grayscale(0.65);
+  opacity: 0.66;
 }
 
 .dashboard-twin-flight {

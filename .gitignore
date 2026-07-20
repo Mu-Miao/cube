@@ -7,6 +7,12 @@ coverage/
 playwright-report/
 test-results/
 
+# Local source assets kept for editing/export only
+src/assets/brand/originals/
+src/assets/mascot/source/
+src/assets/device/*-source.*
+src/assets/device/*-original.*
+
 # Environment files
 .env
 .env.*

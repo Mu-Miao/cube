@@ -7,8 +7,6 @@
 </template>
 
 <script setup lang="ts">
-import { computed } from 'vue'
-
 defineOptions({ name: 'CubeSpinGifPreview' })
 
 const props = withDefaults(
@@ -22,10 +20,7 @@ const props = withDefaults(
   },
 )
 
-const onlineImage = '/%E5%9C%A8%E7%BA%BF.png'
-const offlineImage = '/%E7%A6%BB%E7%BA%BF.png'
-
-const previewImage = computed(() => (props.offline ? offlineImage : onlineImage))
+const previewImage = '/smart-cube-transparent.png'
 </script>
 
 <style scoped>
@@ -56,11 +51,11 @@ const previewImage = computed(() => (props.offline ? offlineImage : onlineImage)
 .cube-spin-preview__image {
   position: relative;
   z-index: 1;
-  width: 68%;
-  height: 68%;
+  width: 94%;
+  height: 82%;
   display: block;
   object-fit: contain;
-  transform: translateY(-1px);
+  transform: translateY(1px);
   filter:
     drop-shadow(0 8px 12px rgba(0, 9, 24, 0.3))
     drop-shadow(0 0 12px rgba(64, 224, 255, 0.16));
