@@ -14,12 +14,19 @@ logger = logging.getLogger(__name__)
 
 
 def _api_endpoint() -> tuple[str, str, str] | None:
-    """返回云端 API 的 (base_url, api_key, model)"""
-    if not settings.LLM_API_KEY:
+    """返回云端 API 的 (base_url, api_key, model)。
+
+    这里就是阿里云百炼 / OpenAI-compatible 云端模型的入口配置：
+    - DASHSCOPE_API_KEY 优先，用于你放在 mac 环境变量里的百炼 Key。
+    - LLM_API_KEY 保留作兼容旧配置。
+    - LLM_API_BASE_URL / LLM_API_MODEL 来自 backend/.env 或环境变量。
+    """
+    api_key = settings.DASHSCOPE_API_KEY or settings.LLM_API_KEY
+    if not api_key:
         return None
     return (
         settings.LLM_API_BASE_URL,
-        settings.LLM_API_KEY,
+        api_key,
         settings.LLM_API_MODEL,
     )
 
@@ -34,13 +41,20 @@ def _local_endpoint() -> tuple[str, str, str] | None:
 
 
 async def _call(base_url: str, api_key: str, model: str, messages: list[dict], timeout: int) -> Optional[str]:
-    """实际调用 OpenAI 兼容的 chat completions 接口"""
+    """实际调用 OpenAI-compatible 的非流式 chat completions 接口。
+
+    AI 洞察页选择 LLM 时会走这里。对于阿里云百炼来说，最终请求地址是：
+    {LLM_API_BASE_URL}/chat/completions
+    """
     payload = {
         "model": model,
         "messages": messages,
         "temperature": settings.LLM_TEMPERATURE,
         "max_tokens": settings.LLM_MAX_TOKENS,
     }
+    if settings.LLM_API_ENABLE_THINKING:
+        # 阿里云百炼 qwen 深度思考模型参数，对应示例里的 extra_body={"enable_thinking": True}。
+        payload["enable_thinking"] = True
     headers = {"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"}
     try:
         async with httpx.AsyncClient(timeout=timeout, trust_env=False) as client:
@@ -131,6 +145,24 @@ async def chat(prompt: str, system: Optional[str] = None) -> Optional[str]:
     return None
 
 
+async def chat_api(prompt: str, system: Optional[str] = None) -> Optional[str]:
+    """
+    使用和 /api/v1/chat/stream 相同的云端 OpenAI 兼容 API 配置生成文本。
+    用于用户显式选择 LLM/API 分析的场景，避免和本地 Ollama 路径混用。
+    """
+    ep = _api_endpoint()
+    if not ep:
+        return None
+
+    messages = []
+    if system:
+        messages.append({"role": "system", "content": system})
+    messages.append({"role": "user", "content": prompt})
+
+    base, key, model = ep
+    return await _call(base, key, model, messages, settings.LLM_TIMEOUT)
+
+
 def is_enabled() -> bool:
     """LLM 是否启用"""
     mode = settings.LLM_MODE.lower()
@@ -151,6 +183,7 @@ async def chat_stream(messages: list[dict]):
     用于聊天面板的 SSE 流式输出。
     仅使用云端 API（OpenAI 兼容协议 + stream=True）。
     """
+    # 小眠聊天面板的流式回复也使用同一套云端 API 配置。
     ep = _api_endpoint()
     if not ep:
         yield "（LLM 未配置，请在 backend/.env 中设置 LLM_API_KEY）"
@@ -161,9 +194,13 @@ async def chat_stream(messages: list[dict]):
         "model": model,
         "messages": messages,
         "temperature": 0.8,
-        "max_tokens": 1024,
+        "max_tokens": settings.LLM_MAX_TOKENS,
         "stream": True,
     }
+    if settings.LLM_API_ENABLE_THINKING:
+        # 流式聊天也把百炼的思考开关带上，模型会先返回 reasoning_content，再返回 content。
+        # 当前前端只展示 content，reasoning_content 会被忽略。
+        payload["enable_thinking"] = True
     headers = {"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"}
 
     try:

@@ -126,11 +126,17 @@ def _normalize_llm_weekly_report(parsed: dict, fallback_days: list[dict]) -> dic
 
 
 async def _ask_llm_json(prompt: str) -> dict | None:
-    result = await llm_service.chat(
+    result = await llm_service.chat_api(
         prompt,
         system=(
             "你是智能桌面魔方的环境分析助手。"
             "必须只返回合法 JSON，不要 Markdown，不要解释，不要额外文本。"
+            "如果任务是生成建议，返回示例："
+            '{"suggestions":[{"icon":"wind","title":"空气流通不足","desc":"建议开窗通风 10-15 分钟。"}]}。'
+            "如果任务是生成周报，返回示例："
+            '{"summary":"本周环境整体稳定，建议继续保持定时通风。",'
+            '"days":[{"date":"2026-07-12","temperature":25.1,"humidity":48.2,"aqi":38,"sample_count":42}]}。'
+            "字段名必须和示例完全一致。"
         ),
     )
     if not result:
@@ -376,7 +382,7 @@ async def get_ai_suggestions(
     if not llm_data:
         return ApiResponse(
             code=LLM_ERROR_CODE,
-            message="LLM 未返回有效建议结果，请确认本地 Ollama 正在运行且模型可用。",
+            message="LLM 未返回有效建议结果，请确认后端已配置和小眠对话相同的 LLM_API_KEY / LLM_API_BASE_URL / LLM_API_MODEL。",
             data=rule_data,
         )
 
@@ -422,7 +428,7 @@ async def get_weekly_report(
     if not llm_data:
         return ApiResponse(
             code=LLM_ERROR_CODE,
-            message="LLM 未返回有效周报结果，请确认本地 Ollama 正在运行且模型可用。",
+            message="LLM 未返回有效周报结果，请确认后端已配置和小眠对话相同的 LLM_API_KEY / LLM_API_BASE_URL / LLM_API_MODEL。",
             data=rule_data,
         )
 

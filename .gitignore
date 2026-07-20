@@ -33,6 +33,7 @@ wheels/
 *.db
 *.sqlite
 *.sqlite3
+data/firmware/
 
 # 日志
 logs/

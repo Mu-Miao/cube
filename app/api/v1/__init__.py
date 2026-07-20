@@ -4,7 +4,7 @@
 
 from fastapi import APIRouter
 
-from app.api.v1 import auth, device, data, control, log, admin, ai, chat
+from app.api.v1 import auth, device, data, control, log, admin, ai, chat, ota
 
 api_router = APIRouter(prefix="/api/v1")
 
@@ -16,3 +16,4 @@ api_router.include_router(log.router)      # /api/v1/log/*
 api_router.include_router(admin.router)    # /api/v1/admin/*
 api_router.include_router(ai.router)       # /api/v1/ai/*
 api_router.include_router(chat.router)     # /api/v1/chat/*
+api_router.include_router(ota.router)      # /api/v1/ota/*

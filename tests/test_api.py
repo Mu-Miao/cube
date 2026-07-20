@@ -1,10 +1,17 @@
 # tests/test_api.py
 # API 集成测试
 
+import json
 import time
+from pathlib import Path
 
 import pytest
 from httpx import AsyncClient
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from app.mqtt.handlers import _latest_firmware
+from app.models.user import User
 
 
 @pytest.mark.asyncio
@@ -219,6 +226,143 @@ async def test_control_command_flow(client: AsyncClient):
     )
     assert resp.status_code == 200
     assert resp.json()["code"] == 4001
+
+
+@pytest.mark.asyncio
+async def test_ota_push_publishes_hardware_payload(
+    client: AsyncClient,
+    db_session: AsyncSession,
+    monkeypatch: pytest.MonkeyPatch,
+):
+    await client.post(
+        "/api/v1/auth/register",
+        json={
+            "username": "ota_admin",
+            "password": "test123456",
+        },
+    )
+    result = await db_session.execute(select(User).where(User.username == "ota_admin"))
+    admin = result.scalar_one()
+    admin.role = "admin"
+    await db_session.flush()
+
+    resp = await client.post(
+        "/api/v1/auth/login",
+        json={
+            "username": "ota_admin",
+            "password": "test123456",
+        },
+    )
+    headers = {"Authorization": f"Bearer {resp.json()['data']['access_token']}"}
+
+    device_id = "OTA001"
+    await client.post(
+        "/api/v1/device/auth",
+        json={
+            "device_id": device_id,
+            "timestamp": 1713880000,
+            "type": "handshake",
+            "chip_model": "ESP32-S3",
+            "version": "1.0.0",
+        },
+    )
+
+    published: list[tuple[str, bytes]] = []
+
+    async def fake_publish(topic: str, payload: bytes) -> None:
+        published.append((topic, payload))
+
+    monkeypatch.setattr("app.api.v1.ota.mqtt_client.publish", fake_publish)
+
+    resp = await client.post(
+        "/api/v1/ota/push",
+        json={
+            "device_id": device_id,
+            "version": "1.1.0",
+            "url": "https://tianmuzc.site/firmware/v1.1.0.bin",
+            "md5": "d41d8cd98f00b204e9800998ecf8427e",
+        },
+        headers=headers,
+    )
+
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["code"] == 0
+    assert body["data"]["pushed"] == 1
+    assert published[0][0] == "cube2026/server/OTA001/control"
+
+    payload = json.loads(published[0][1].decode("utf-8"))
+    assert payload["timestamp"] > 0
+    assert payload == {
+        "code": 200,
+        "type": "ota_update",
+        "msg": "新版本可用",
+        "timestamp": payload["timestamp"],
+        "url": "https://tianmuzc.site/firmware/v1.1.0.bin",
+        "version": "1.1.0",
+        "md5": "d41d8cd98f00b204e9800998ecf8427e",
+    }
+
+
+@pytest.mark.asyncio
+async def test_ota_firmware_upload_returns_public_url(
+    client: AsyncClient,
+    db_session: AsyncSession,
+):
+    await client.post(
+        "/api/v1/auth/register",
+        json={
+            "username": "firmware_admin",
+            "password": "test123456",
+        },
+    )
+    result = await db_session.execute(select(User).where(User.username == "firmware_admin"))
+    admin = result.scalar_one()
+    admin.role = "admin"
+    await db_session.flush()
+
+    resp = await client.post(
+        "/api/v1/auth/login",
+        json={
+            "username": "firmware_admin",
+            "password": "test123456",
+        },
+    )
+    headers = {"Authorization": f"Bearer {resp.json()['data']['access_token']}"}
+
+    resp = await client.post(
+        "/api/v1/ota/firmware",
+        params={"version": "1.1.0"},
+        files={"file": ("firmware.bin", b"test-firmware", "application/octet-stream")},
+        headers=headers,
+    )
+
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["code"] == 0
+    assert body["data"]["url"] == "https://tianmuzc.site/firmware/v1.1.0.bin"
+    assert body["data"]["md5"] == "b1d9cbf0a8651c78ccd96a1e8b32a50f"
+    assert body["data"]["size"] == len(b"test-firmware")
+    firmware_path = Path("data/firmware/v1.1.0.bin")
+    if firmware_path.exists():
+        firmware_path.unlink()
+
+
+def test_latest_firmware_builds_version_check_response_source():
+    firmware_dir = Path("data/firmware")
+    firmware_dir.mkdir(parents=True, exist_ok=True)
+    firmware_path = firmware_dir / "firmware_v9.9.9.bin"
+    firmware_path.write_bytes(b"version-check-firmware")
+    try:
+        latest = _latest_firmware()
+    finally:
+        firmware_path.unlink()
+
+    assert latest == (
+        "9.9.9",
+        "https://tianmuzc.site/firmware/firmware_v9.9.9.bin",
+        "c29a11009a9e73ce1b4057f11d284ff5",
+    )
 
 
 @pytest.mark.asyncio

@@ -1,24 +1,86 @@
 # app/api/v1/ota.py
 # OTA 固件更新接口
-# 管理员通过 MQTT 向设备推送固件更新指令
+# 后端通过 MQTT 下发 OTA 指令，ESP32 通过 HTTP 下载固件并自行校验、烧录、重启。
 
+import hashlib
 import json
+import re
 import time
+from urllib.parse import urljoin
 
-from fastapi import APIRouter, Depends, Query, Request
+from fastapi import APIRouter, Depends, File, Query, Request, UploadFile
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import get_current_admin
+from app.config import BACKEND_DIR, settings
 from app.db.session import get_db
 from app.models.device import Device
-from app.models.user import User
 from app.models.ota_log import OtaLog
+from app.models.user import User
 from app.mqtt.client import mqtt_client
 from app.mqtt.topics import get_control_topic
 from app.schemas.base import ApiResponse
 
 router = APIRouter(prefix="/ota", tags=["OTA 固件更新"])
+
+FIRMWARE_DIR = BACKEND_DIR / "data" / "firmware"
+MD5_RE = re.compile(r"^[0-9a-fA-F]{32}$")
+
+
+def _normalize_url(ota_data: dict) -> str:
+    return str(ota_data.get("url") or ota_data.get("firmware_url") or "").strip()
+
+
+def _build_ota_payload(version: str, url: str, md5: str) -> dict:
+    return {
+        "code": 200,
+        "type": "ota_update",
+        "msg": "新版本可用",
+        "timestamp": int(time.time()),
+        "url": url,
+        "version": version,
+        "md5": md5.lower(),
+    }
+
+
+def _build_firmware_url(request: Request, filename: str) -> str:
+    base_url = settings.FIRMWARE_PUBLIC_BASE_URL.strip() or str(request.base_url)
+    if not base_url.endswith("/"):
+        base_url += "/"
+    return urljoin(base_url, f"firmware/{filename}")
+
+
+def _validate_push_payload(ota_data: dict) -> tuple[str, str, str, str, int | None] | ApiResponse:
+    device_id = str(ota_data.get("device_id") or "").strip()
+    version = str(ota_data.get("version") or "").strip()
+    url = _normalize_url(ota_data)
+    md5 = str(ota_data.get("md5") or "").strip()
+    raw_size = ota_data.get("size")
+
+    if not device_id:
+        return ApiResponse(code=400, message="device_id 不能为空", data=None)
+    if not version:
+        return ApiResponse(code=400, message="version 不能为空", data=None)
+    if not url:
+        return ApiResponse(code=400, message="url 不能为空", data=None)
+    if not url.startswith(("http://", "https://")):
+        return ApiResponse(code=400, message="url 必须是 HTTP/HTTPS 可访问地址", data=None)
+    if not md5:
+        return ApiResponse(code=400, message="md5 不能为空", data=None)
+    if not MD5_RE.match(md5):
+        return ApiResponse(code=400, message="md5 必须是 32 位十六进制字符串", data=None)
+
+    size: int | None = None
+    if raw_size is not None:
+        try:
+            size = int(raw_size)
+        except (TypeError, ValueError):
+            return ApiResponse(code=400, message="size 必须是正整数", data=None)
+        if size <= 0:
+            return ApiResponse(code=400, message="size 必须是正整数", data=None)
+
+    return device_id, version, url, md5.lower(), size
 
 
 @router.post("/push", response_model=ApiResponse)
@@ -35,7 +97,7 @@ async def push_ota_update(
     请求体：
     {
         "device_id": "CUBE001",          // 目标设备ID，"*" 表示所有在线设备
-        "firmware_url": "https://...",   // 固件下载链接
+        "url": "http://...",             // ESP32 可访问的固件下载链接
         "version": "v1.1.0",             // 新版本号
         "md5": "abc123..."               // 固件文件 MD5
     }
@@ -43,31 +105,16 @@ async def push_ota_update(
     流程：
     1. 验证管理员权限
     2. 查找目标设备（支持单设备或批量）
-    3. 通过 MQTT 发送 ota_update 消息到设备控制主题
+    3. 通过 MQTT 向 cube2026/server/{device_id}/control 发送 type=ota_update
     4. 记录推送日志
     """
-    device_id = ota_data.get("device_id", "")
-    firmware_url = ota_data.get("firmware_url", "")
-    version = ota_data.get("version", "")
-    md5 = ota_data.get("md5", "")
-
-    # 参数校验
-    if not device_id:
-        return ApiResponse(code=400, message="device_id 不能为空", data=None)
-    if not firmware_url:
-        return ApiResponse(code=400, message="firmware_url 不能为空", data=None)
-    if not version:
-        return ApiResponse(code=400, message="version 不能为空", data=None)
-    if not md5:
-        return ApiResponse(code=400, message="md5 不能为空", data=None)
+    validated = _validate_push_payload(ota_data)
+    if isinstance(validated, ApiResponse):
+        return validated
+    device_id, version, firmware_url, md5, _size = validated
 
     # 构建 OTA 消息体
-    ota_payload = {
-        "type": "ota_update",
-        "url": firmware_url,
-        "version": version,
-        "md5": md5,
-    }
+    ota_payload = _build_ota_payload(version, firmware_url, md5)
     ota_bytes = json.dumps(ota_payload, ensure_ascii=False).encode("utf-8")
 
     pushed_count = 0
@@ -161,7 +208,56 @@ async def push_ota_update(
     if failed_devices:
         msg += f"，失败: {', '.join(failed_devices)}"
 
-    return ApiResponse(message=msg, data={"pushed": pushed_count, "failed": failed_devices})
+    return ApiResponse(
+        message=msg,
+        data={
+            "pushed": pushed_count,
+            "failed": failed_devices,
+            "payload": ota_payload,
+        },
+    )
+
+
+@router.post("/firmware", response_model=ApiResponse)
+async def upload_firmware(
+    request: Request,
+    version: str,
+    file: UploadFile = File(...),
+    _admin: User = Depends(get_current_admin),
+):
+    """
+    上传固件并返回 OTA 推送需要的 url/md5/size。
+    POST /api/v1/ota/firmware?version=1.1.0
+    """
+    version = version.strip()
+    if not version:
+        return ApiResponse(code=400, message="version 不能为空", data=None)
+    if not file.filename or not file.filename.endswith(".bin"):
+        return ApiResponse(code=400, message="只允许上传 .bin 固件文件", data=None)
+
+    content = await file.read()
+    if not content:
+        return ApiResponse(code=400, message="固件文件不能为空", data=None)
+
+    safe_version = re.sub(r"[^0-9A-Za-z._-]", "_", version)
+    filename = f"v{safe_version}.bin" if not safe_version.startswith("v") else f"{safe_version}.bin"
+    FIRMWARE_DIR.mkdir(parents=True, exist_ok=True)
+    firmware_path = FIRMWARE_DIR / filename
+    firmware_path.write_bytes(content)
+
+    md5 = hashlib.md5(content).hexdigest()
+    firmware_url = _build_firmware_url(request, filename)
+
+    return ApiResponse(
+        message="固件已上传",
+        data={
+            "version": version,
+            "url": firmware_url,
+            "md5": md5,
+            "size": len(content),
+            "filename": filename,
+        },
+    )
 
 
 @router.get("/logs", response_model=ApiResponse)

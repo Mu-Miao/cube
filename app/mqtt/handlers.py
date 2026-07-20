@@ -3,11 +3,15 @@
 # 处理来自硬件设备的各类 MQTT 消息：握手、心跳、数据上报等
 
 import json
+import hashlib
+import re
 import time
 from datetime import datetime, timezone
+from urllib.parse import urljoin
 
 from loguru import logger
 
+from app.config import BACKEND_DIR, settings
 from app.db.session import async_session_factory
 from app.models.device import Device
 from app.models.sensor_data import SensorData
@@ -36,6 +40,7 @@ async def handle_mqtt_message(topic: str, payload: bytes) -> None:
       - handshake: 设备握手
       - heartbeat: 设备心跳
       - data_report: 传感器数据上报
+      - version_check: 设备请求检查固件版本
       - control_ack: 控制执行结果
     """
     try:
@@ -53,6 +58,7 @@ async def handle_mqtt_message(topic: str, payload: bytes) -> None:
         "handshake": _handle_handshake,
         "heartbeat": _handle_heartbeat,
         "data_report": _handle_data_report,
+        "version_check": _handle_version_check,
         "control_ack": _handle_control_ack,
     }
 
@@ -263,6 +269,115 @@ async def _handle_data_report(device_id: str, data: dict) -> None:
         "eco2": sensor_data.get("eco2"),
         "mold_risk": sensor_data.get("mold_risk"),
     })
+
+
+def _parse_version(value: str) -> tuple[int, ...]:
+    parts = re.findall(r"\d+", value or "")
+    return tuple(int(part) for part in parts)
+
+
+def _latest_firmware() -> tuple[str, str, str] | None:
+    firmware_dir = BACKEND_DIR / "data" / "firmware"
+    candidates = []
+    for path in firmware_dir.glob("*.bin"):
+        version_match = re.search(r"v?(\d+(?:\.\d+)+)", path.name)
+        if not version_match:
+            continue
+        version = version_match.group(1)
+        candidates.append((_parse_version(version), version, path))
+    if not candidates:
+        return None
+
+    _version_key, version, path = max(candidates, key=lambda item: item[0])
+    md5 = hashlib.md5(path.read_bytes()).hexdigest()
+    base_url = settings.FIRMWARE_PUBLIC_BASE_URL.strip()
+    if not base_url:
+        logger.warning("无法生成 OTA URL: FIRMWARE_PUBLIC_BASE_URL 未配置")
+        return None
+    if not base_url.endswith("/"):
+        base_url += "/"
+    return version, urljoin(base_url, f"firmware/{path.name}"), md5
+
+
+async def _handle_version_check(device_id: str, data: dict) -> None:
+    """
+    处理设备版本检查请求。
+    协议: 版本检查请求协议.json -> OTA更新推送协议(1).json
+    """
+    async with async_session_factory() as db:
+        from sqlalchemy import select
+
+        result = await db.execute(select(Device).where(Device.device_id == device_id))
+        device = result.scalar_one_or_none()
+
+        if not device:
+            logger.warning("版本检查失败: 设备未注册 device_id={}", device_id)
+            payload = {
+                "code": 403,
+                "type": "ota_update",
+                "msg": "设备未授权",
+                "timestamp": int(time.time()),
+                "url": "",
+                "version": data.get("current_version", ""),
+                "md5": "",
+            }
+            await mqtt_client.publish(get_status_topic(device_id), json.dumps(payload).encode())
+            return
+
+        if device.token != data.get("token"):
+            logger.warning("版本检查 Token 无效: device_id={}", device_id)
+            payload = {
+                "code": 401,
+                "type": "ota_update",
+                "msg": "Token无效",
+                "timestamp": int(time.time()),
+                "url": "",
+                "version": data.get("current_version", ""),
+                "md5": "",
+            }
+            await mqtt_client.publish(get_status_topic(device_id), json.dumps(payload).encode())
+            return
+
+        device.status = "online"
+        device.last_seen = datetime.now(timezone.utc)
+        if data.get("current_version"):
+            device.firmware_version = data.get("current_version")
+        await db.commit()
+
+    latest = _latest_firmware()
+    current_version = data.get("current_version", "")
+    if latest and _parse_version(latest[0]) > _parse_version(current_version):
+        target_version, firmware_url, firmware_md5 = latest
+        payload = {
+            "code": 200,
+            "type": "ota_update",
+            "msg": "新版本可用",
+            "timestamp": int(time.time()),
+            "url": firmware_url,
+            "version": target_version,
+            "md5": firmware_md5,
+        }
+    else:
+        payload = {
+            "code": 204,
+            "type": "ota_update",
+            "msg": "已是最新版本",
+            "timestamp": int(time.time()),
+            "url": "",
+            "version": current_version,
+            "md5": "",
+        }
+
+    await mqtt_client.publish(
+        get_status_topic(device_id),
+        json.dumps(payload, ensure_ascii=False).encode(),
+    )
+    logger.info(
+        "版本检查响应: device_id={}, current_version={}, code={}",
+        device_id,
+        current_version,
+        payload["code"],
+    )
 
 
 async def _handle_control_ack(device_id: str, data: dict) -> None:

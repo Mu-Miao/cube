@@ -20,6 +20,10 @@ class Settings(BaseSettings):
     DEBUG: bool = True  # 调试模式，开启后自动重载
     APP_NAME: str = "智能桌面魔方 MVP"  # 应用名称
 
+    # === OTA 固件下载配置 ===
+    # ESP32 必须能访问该地址；公网演示时填 tianmuzc.site 这类可外网访问的域名。
+    FIRMWARE_PUBLIC_BASE_URL: str = ""
+
     # === 数据库配置 ===
     # SQLite 异步连接字符串，默认在项目 data 目录下创建数据库文件
     DATABASE_URL: str = "sqlite+aiosqlite:///./data/cube.db"
@@ -31,7 +35,15 @@ class Settings(BaseSettings):
 
     # === CORS 跨域配置 ===
     # 允许的前端源地址列表（开发环境使用）
-    CORS_ORIGINS: List[str] = ["http://localhost:5173", "http://localhost:3000"]
+    CORS_ORIGINS: List[str] = [
+        "http://localhost:5173",
+        "http://localhost:5174",
+        "http://localhost:5175",
+        "http://localhost:3000",
+        "http://127.0.0.1:8080",
+        "https://tianmuzc.site",
+        "https://www.tianmuzc.site",
+    ]
 
     # === MQTT 硬件对接配置 ===
     MQTT_BROKER_URL: str = "broker.emqx.io"  # MQTT Broker 地址
@@ -59,24 +71,31 @@ class Settings(BaseSettings):
     WS_PING_INTERVAL: int = 30
     WS_MAX_CONNECTIONS: int = 100
 
-    # === 外部服务配置（骨架） ===
+    # === 外部服务配置（正在开发中，非当前 MVP） ===
     TTS_API_URL: str = ""
     WEATHER_API_URL: str = ""
     WEATHER_API_KEY: str = ""
     WECHAT_WEBHOOK_URL: str = ""
 
     # === LLM 配置 ===
-    # off/api/local/auto；auto 优先本地模型，失败后回退云端 API。
+    # off/api/local/auto；api 使用 OpenAI-compatible 云端接口。
+    # 阿里云百炼推荐：
+    #   DASHSCOPE_API_KEY=你的百炼 Key
+    #   LLM_API_BASE_URL=https://llm-cvcbe2u4nm29ryl2.cn-beijing.maas.aliyuncs.com/compatible-mode/v1
+    #   LLM_API_MODEL=qwen3.6-flash
+    #   LLM_API_ENABLE_THINKING=false
     LLM_MODE: str = "off"
-    LLM_API_BASE_URL: str = ""
+    LLM_API_BASE_URL: str = "https://llm-cvcbe2u4nm29ryl2.cn-beijing.maas.aliyuncs.com/compatible-mode/v1"
     LLM_API_KEY: str = ""
-    LLM_API_MODEL: str = ""
+    DASHSCOPE_API_KEY: str = ""
+    LLM_API_MODEL: str = "qwen3.6-flash"
+    LLM_API_ENABLE_THINKING: bool = False
     LLM_LOCAL_BASE_URL: str = "http://localhost:11434/v1"
     LLM_LOCAL_MODEL: str = "qwen2.5:3b"
     LLM_TIMEOUT: int = 120
     LLM_LOCAL_TIMEOUT: int = 120
     LLM_TEMPERATURE: float = 0.7
-    LLM_MAX_TOKENS: int = 1024
+    LLM_MAX_TOKENS: int = 512
 
     class Config:
         # 从 .env 文件加载配置

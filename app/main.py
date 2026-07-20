@@ -9,10 +9,11 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
 from loguru import logger
 
 from app.api.v1 import api_router
-from app.config import settings
+from app.config import BACKEND_DIR, settings
 from app.db.session import init_db
 from app.mqtt.client import mqtt_client
 from app.mqtt.handlers import handle_mqtt_message
@@ -83,6 +84,11 @@ app.add_middleware(
 # === 注册路由 ===
 # 所有 v1 API 路由通过 /api/v1 前缀挂载
 app.include_router(api_router)
+
+# OTA 固件静态下载目录。ESP32 收到 OTA 指令后会直接请求这里的 .bin 文件。
+FIRMWARE_DIR = BACKEND_DIR / "data" / "firmware"
+FIRMWARE_DIR.mkdir(parents=True, exist_ok=True)
+app.mount("/firmware", StaticFiles(directory=FIRMWARE_DIR), name="firmware")
 
 
 # === WebSocket 端点 ===

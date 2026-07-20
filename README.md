@@ -65,9 +65,9 @@ backend/
 │   │   ├── data_service.py          # 数据查询服务层
 │   │   ├── alert_service.py         # 告警阈值检测
 │   │   ├── cleanup_service.py       # 过期数据清理
-│   │   ├── tts_service.py           # 语音合成（骨架）
-│   │   ├── weather_service.py       # 天气服务（骨架）
-│   │   └── wechat_service.py        # 企业微信推送（骨架）
+│   │   ├── tts_service.py           # 语音合成（正在开发中，非 MVP）
+│   │   ├── weather_service.py       # 天气服务（正在开发中，非 MVP）
+│   │   └── wechat_service.py        # 企业微信推送（正在开发中，非 MVP）
 │   ├── mqtt/
 │   │   ├── client.py                # MQTT 客户端
 │   │   ├── handlers.py              # MQTT 消息处理
@@ -112,11 +112,13 @@ uvicorn app.main:app --reload --port 8000
 
 访问 `http://localhost:8000/docs` 查看 Swagger API 文档。
 
-### Docker 部署
+### Docker 部署（正在开发中，非当前 MVP）
 
 ```bash
 docker-compose up -d
 ```
+
+当前比赛 MVP 以本地启动和演示数据脚本为准，Docker/Gunicorn/Nginx 生产部署文件保留但不作为当前交付范围。
 
 ### 创建管理员
 
@@ -253,6 +255,8 @@ python -m pytest tests/
 | GET  | `/api/v1/control/{device_id}/pull` | 设备拉取指令 |
 | POST | `/api/v1/control/{device_id}/ack`  | 执行结果通知 |
 
+当前 MVP 只保留硬件可执行的控制主线：灯光、亮度、蜂鸣器、专注模式、屏幕亮度。空调、音频等泛智能家居控制已砍出当前范围。
+
 ### 日志
 
 | 方法   | 路径                      | 说明     |
@@ -284,6 +288,12 @@ python -m pytest tests/
 
 端点: `ws://localhost:8000/ws`
 
+公网演示时通过同一个域名访问：
+
+```text
+wss://tianmuzc.site/ws
+```
+
 消息类型: `auth`（认证）、`subscribe`（订阅设备）、`ping`（心跳）
 
 推送类型: `sensor_data`、`device_status`、`device_heartbeat`、`control_result`、`alert`
@@ -301,10 +311,10 @@ python -m pytest tests/
 
 ```text
 VITE_API_BASE_URL=/api/v1
-VITE_WS_BASE_URL=ws://localhost:8000
+VITE_WS_BASE_URL=
 ```
 
-开发时可以使用 Vite 代理，也可以把 `VITE_API_BASE_URL` 改成完整后端地址。
+开发时可以使用 Vite 代理，也可以把 `VITE_API_BASE_URL` 改成完整后端地址。公网单域名方案下 `VITE_WS_BASE_URL` 保持为空，前端会按当前页面协议自动使用 `ws://当前域名/ws` 或 `wss://当前域名/ws`。
 
 ## 告警阈值
 
@@ -320,13 +330,26 @@ VITE_WS_BASE_URL=ws://localhost:8000
 | --------------------- | ------------------------------------ | ------------ |
 | `DEBUG`               | `true`                               | 调试模式         |
 | `SECRET_KEY`          | -                                    | JWT 签名密钥     |
+| `FIRMWARE_PUBLIC_BASE_URL` | `https://tianmuzc.site`            | OTA 固件公网下载域名 |
+| `CORS_ORIGINS`        | 本地开发源 + `https://tianmuzc.site`   | 允许访问后端的前端源 |
 | `DATABASE_URL`        | `sqlite+aiosqlite:///./data/cube.db` | 数据库连接        |
 | `MQTT_BROKER_URL`     | `broker.emqx.io`                     | MQTT Broker  |
 | `MQTT_BROKER_PORT`    | `1883`                               | MQTT 端口      |
 | `DATA_RETENTION_DAYS` | `30`                                 | 数据保留天数       |
-| `TTS_API_URL`         | 空                                    | 语音合成 API     |
-| `WEATHER_API_URL`     | 空                                    | 天气 API       |
-| `WECHAT_WEBHOOK_URL`  | 空                                    | 企业微信 Webhook |
+| `TTS_API_URL`         | 空                                    | 语音合成 API，正在开发中，非 MVP |
+| `WEATHER_API_URL`     | 空                                    | 天气 API，正在开发中，非 MVP |
+| `WECHAT_WEBHOOK_URL`  | 空                                    | 企业微信 Webhook，正在开发中，非 MVP |
+
+## 正在开发中 / 已砍出当前 MVP
+
+以下文件或能力保留在项目中，但当前不作为比赛 MVP 交付范围：
+
+- `app/api/v1/ota.py`：OTA 固件接口已挂载，用于硬件联调；实际 `.bin` 固件产物放在 `data/firmware/`，不提交到 Git。
+- `app/services/tts_service.py`：TTS 语音合成预留。
+- `app/services/weather_service.py`：天气服务预留。
+- `app/services/wechat_service.py`：微信推送预留。
+- `alembic.ini`：正式数据库迁移流程预留。
+- `Dockerfile`、`docker-compose.yml`：生产部署预留。
 
 ## 仓库说明
 
