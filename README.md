@@ -1,6 +1,6 @@
 # 智能桌面魔方 - 后端服务
 
-更新时间：2026-05-28
+更新时间：2026-07-26
 
 基于 FastAPI + SQLAlchemy + MQTT + WebSocket 的 IoT 后端，为智能桌面魔方硬件设备提供设备管理、传感器数据采集、远程控制、告警检测等服务。
 
@@ -81,7 +81,9 @@ backend/
 │       └── session.py               # 异步数据库会话
 ├── scripts/
 │   ├── create_admin.py              # 创建管理员账号
-│   └── init_db.py                   # 初始化数据库
+│   ├── init_db.py                   # 初始化数据库
+│   ├── seed_demo.py                 # 生成本地演示账号、设备和历史数据
+│   └── tianmu_proxy.py              # 前后端单域名 HTTP/WebSocket 反向代理
 ├── tests/
 ├── Dockerfile
 ├── docker-compose.yml
@@ -111,6 +113,31 @@ uvicorn app.main:app --reload --port 8000
 ```
 
 访问 `http://localhost:8000/docs` 查看 Swagger API 文档。
+
+### 前后端单域名代理
+
+`scripts/tianmu_proxy.py` 是项目自带的轻量 Python 反向代理，适合本地演示或把 SakuraFrp 等隧道的入口统一转发到一个本机端口。脚本不包含域名账号、隧道密钥、证书或其他私密配置，可以随代码公开。
+
+启动前先确保：
+
+- FastAPI 后端运行在 `127.0.0.1:8000`。
+- 前端生产预览运行在 `127.0.0.1:4173`。
+
+然后在 `backend/` 目录启动代理：
+
+```bash
+/opt/miniconda3/envs/backend/bin/python scripts/tianmu_proxy.py
+```
+
+代理监听 `127.0.0.1:8080`，路由规则如下：
+
+| 请求 | 上游 |
+|---|---|
+| `/api/*`、`/health`、`/docs`、`/redoc`、`/openapi.json`、`/firmware/*` | FastAPI `127.0.0.1:8000` |
+| `/ws` | FastAPI WebSocket `127.0.0.1:8000/ws` |
+| 其他路径 | Vite Preview `127.0.0.1:4173` |
+
+公网使用时，让隧道或网关把 HTTPS/WSS 请求转到 `127.0.0.1:8080`。域名、TLS 证书和隧道凭据应在部署平台或本机环境中配置，不要写进仓库。这个脚本是项目级轻量代理，不替代需要限流、审计、高可用等能力的正式生产网关。
 
 ### Docker 部署（正在开发中，非当前 MVP）
 
@@ -288,10 +315,10 @@ python -m pytest tests/
 
 端点: `ws://localhost:8000/ws`
 
-公网演示时通过同一个域名访问：
+公网单域名部署时通过当前域名访问：
 
 ```text
-wss://tianmuzc.site/ws
+wss://<your-domain>/ws
 ```
 
 消息类型: `auth`（认证）、`subscribe`（订阅设备）、`ping`（心跳）
@@ -330,8 +357,8 @@ VITE_WS_BASE_URL=
 | --------------------- | ------------------------------------ | ------------ |
 | `DEBUG`               | `true`                               | 调试模式         |
 | `SECRET_KEY`          | -                                    | JWT 签名密钥     |
-| `FIRMWARE_PUBLIC_BASE_URL` | `https://tianmuzc.site`            | OTA 固件公网下载域名 |
-| `CORS_ORIGINS`        | 本地开发源 + `https://tianmuzc.site`   | 允许访问后端的前端源 |
+| `FIRMWARE_PUBLIC_BASE_URL` | 空                                   | OTA 固件公网下载地址；实机 OTA 时必须设置为设备可访问的 HTTPS 地址 |
+| `CORS_ORIGINS`        | 本地开发源                              | 允许访问后端的前端源；跨域部署时按实际域名配置 |
 | `DATABASE_URL`        | `sqlite+aiosqlite:///./data/cube.db` | 数据库连接        |
 | `MQTT_BROKER_URL`     | `broker.emqx.io`                     | MQTT Broker  |
 | `MQTT_BROKER_PORT`    | `1883`                               | MQTT 端口      |

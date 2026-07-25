@@ -43,8 +43,8 @@ async def get_current_user(
             detail="无效的认证凭证",
         )
     # 从载荷中获取用户 ID
-    user_id: int | None = payload.get("user_id")
-    if user_id is None:
+    user_id = payload.get("user_id")
+    if not isinstance(user_id, int):
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="无效的认证凭证",

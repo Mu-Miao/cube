@@ -7,6 +7,7 @@ from typing import Optional
 
 import bcrypt
 from jose import JWTError, jwt
+from loguru import logger
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -28,7 +29,11 @@ def verify_password(plain_password: str, hashed_password: str) -> bool:
     验证明文密码是否与哈希密码匹配
     登录时使用，比较用户输入密码与数据库存储的哈希值
     """
-    return bcrypt.checkpw(plain_password.encode(), hashed_password.encode())
+    try:
+        return bcrypt.checkpw(plain_password.encode(), hashed_password.encode())
+    except ValueError:
+        logger.warning("用户密码哈希格式无效，已拒绝本次登录")
+        return False
 
 
 def create_access_token(data: dict) -> str:

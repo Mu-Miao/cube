@@ -4,7 +4,11 @@
 
 from typing import Optional
 
-from pydantic import BaseModel, EmailStr, Field
+from pydantic import BaseModel, Field, field_validator
+
+
+def _strip_text(value: str) -> str:
+    return value.strip()
 
 
 class UserRegister(BaseModel):
@@ -17,14 +21,26 @@ class UserRegister(BaseModel):
     password: str = Field(..., min_length=6, max_length=128, description="密码（最少6位）")
     email: Optional[str] = Field(None, max_length=100, description="邮箱（可选）")
 
+    _normalize_username = field_validator("username")(_strip_text)
+
+    @field_validator("email")
+    @classmethod
+    def normalize_email(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        stripped = value.strip()
+        return stripped or None
+
 
 class UserLogin(BaseModel):
     """
     用户登录请求体
     POST /api/v1/auth/login
     """
-    username: str = Field(..., description="用户名")
-    password: str = Field(..., description="密码")
+    username: str = Field(..., min_length=2, max_length=50, description="用户名")
+    password: str = Field(..., min_length=1, max_length=128, description="密码")
+
+    _normalize_username = field_validator("username")(_strip_text)
 
 
 class TokenResponse(BaseModel):

@@ -30,6 +30,8 @@ BACKEND_PREFIXES = (
 )
 HOP_BY_HOP_HEADERS = {
     "connection",
+    "content-encoding",
+    "content-length",
     "keep-alive",
     "proxy-authenticate",
     "proxy-authorization",
@@ -97,6 +99,9 @@ async def proxy_http(path: str, request: Request) -> Response:
     )
     body = await request.body()
     headers = _filtered_headers(request.headers.items())
+    # httpx transparently decodes upstream gzip/br bodies. Ask preview/backend for
+    # identity responses so forwarded headers and bodies cannot disagree.
+    headers["accept-encoding"] = "identity"
 
     async with httpx.AsyncClient(follow_redirects=False, timeout=120.0, trust_env=False) as client:
         upstream = await client.request(

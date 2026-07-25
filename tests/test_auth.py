@@ -4,6 +4,10 @@
 
 import pytest
 from httpx import AsyncClient
+from jose import jwt
+
+from app.config import settings
+from app.models.user import User
 
 
 @pytest.mark.asyncio
@@ -26,6 +30,18 @@ async def test_register_duplicate(client: AsyncClient):
     await client.post("/api/v1/auth/register", json=payload)
     resp = await client.post("/api/v1/auth/register", json=payload)
     assert resp.status_code == 400
+
+
+@pytest.mark.asyncio
+async def test_register_strips_username(client: AsyncClient):
+    """注册时用户名首尾空格应被清理，避免同一账号出现隐藏差异"""
+    resp = await client.post("/api/v1/auth/register", json={
+        "username": "  trim_user  ",
+        "password": "secret123",
+    })
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["data"]["username"] == "trim_user"
 
 
 @pytest.mark.asyncio
@@ -71,6 +87,33 @@ async def test_login_wrong_password(client: AsyncClient):
 
 
 @pytest.mark.asyncio
+async def test_login_strips_username(client: AsyncClient):
+    """登录时用户名首尾空格应被清理，降低移动端输入误差"""
+    await client.post("/api/v1/auth/register", json={
+        "username": "frank",
+        "password": "correct123",
+    })
+    resp = await client.post("/api/v1/auth/login", json={
+        "username": "  frank  ",
+        "password": "correct123",
+    })
+    assert resp.status_code == 200
+
+
+@pytest.mark.asyncio
+async def test_login_invalid_password_hash_returns_401(client: AsyncClient, db_session):
+    """数据库中密码哈希损坏时，登录应拒绝而不是抛 500"""
+    db_session.add(User(username="broken_hash", password="not-a-bcrypt-hash"))
+    await db_session.flush()
+
+    resp = await client.post("/api/v1/auth/login", json={
+        "username": "broken_hash",
+        "password": "anything",
+    })
+    assert resp.status_code == 401
+
+
+@pytest.mark.asyncio
 async def test_login_nonexistent_user(client: AsyncClient):
     """用户不存在：应返回 401"""
     resp = await client.post("/api/v1/auth/login", json={
@@ -94,3 +137,15 @@ async def test_protected_route_with_valid_token(client: AsyncClient, auth_header
     assert resp.status_code == 200
     body = resp.json()
     assert body["code"] == 0
+
+
+@pytest.mark.asyncio
+async def test_protected_route_rejects_token_with_non_integer_user_id(client: AsyncClient):
+    """Token 载荷中的 user_id 类型不对时应直接拒绝"""
+    token = jwt.encode(
+        {"user_id": "1", "username": "bad-token"},
+        settings.SECRET_KEY,
+        algorithm=settings.ALGORITHM,
+    )
+    resp = await client.get("/api/v1/device/list", headers={"Authorization": f"Bearer {token}"})
+    assert resp.status_code == 401
