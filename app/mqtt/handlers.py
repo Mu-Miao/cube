@@ -14,6 +14,7 @@ from loguru import logger
 from app.config import BACKEND_DIR, settings
 from app.db.session import async_session_factory
 from app.models.device import Device
+from app.models.ota_log import OtaLog
 from app.models.sensor_data import SensorData
 from app.mqtt.client import mqtt_client
 from app.mqtt.topics import get_status_topic, get_data_topic
@@ -395,6 +396,35 @@ async def _handle_control_ack(device_id: str, data: dict) -> None:
         value,
         result_status,
     )
+
+    if command == "ota_update":
+        from sqlalchemy import select
+
+        async with async_session_factory() as db:
+            query = select(OtaLog).where(
+                OtaLog.device_id == device_id,
+                OtaLog.status == "pushed",
+            )
+            if value:
+                query = query.where(OtaLog.target_version == str(value))
+            query = query.order_by(OtaLog.id.desc()).limit(1)
+            ota_log = (await db.execute(query)).scalar_one_or_none()
+            if ota_log:
+                ota_log.status = "success" if str(result_status).lower() in {"success", "ok"} else "failed"
+                ota_log.remark = str(data.get("message") or "")
+                await db.commit()
+                logger.info(
+                    "OTA 日志已更新: device_id={}, version={}, status={}",
+                    device_id,
+                    ota_log.target_version,
+                    ota_log.status,
+                )
+            else:
+                logger.warning(
+                    "未找到对应的 OTA 推送日志: device_id={}, version={}",
+                    device_id,
+                    value,
+                )
 
     # 通过 WebSocket 推送给前端
     await ws_manager.broadcast_control_result(device_id, command, value, result_status)

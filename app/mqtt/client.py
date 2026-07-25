@@ -107,11 +107,14 @@ class MQTTClient:
             topic: MQTT 主题
             payload: 消息内容（字节）
         """
-        if self._client and self._running:
-            try:
-                await self._client.publish(topic, payload=payload)
-            except Exception as e:
-                logger.error(f"MQTT 发布失败 [{topic}]: {e}")
+        if not self._client or not self._running:
+            raise RuntimeError("MQTT 未连接，消息未发送")
+
+        try:
+            await self._client.publish(topic, payload=payload)
+        except Exception as e:
+            logger.error(f"MQTT 发布失败 [{topic}]: {e}")
+            raise RuntimeError(f"MQTT 发布失败: {e}") from e
 
     async def disconnect(self) -> None:
         """

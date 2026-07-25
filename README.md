@@ -16,6 +16,7 @@
 - 管理员用户管理、设备管理、系统统计。
 - AI 分析接口：环境综合评分、风险预警、智能建议、周报数据。
 - MQTT 设备消息处理。
+- OTA 固件上传、版本检查、MQTT 更新推送、MD5 校验和设备结果回传；已完成 ESP32-S3 实机更新验证。
 - WebSocket 实时推送传感器数据、设备状态、控制结果和告警。
 
 最近验证结果：
@@ -24,7 +25,7 @@
 python -m pytest tests/
 ```
 
-测试通过，当前测试覆盖认证、设备、数据、控制、AI 分析等核心流程。
+测试通过，当前测试覆盖认证、设备、数据、控制、OTA、AI 分析等核心流程。
 
 ## 技术栈
 
@@ -51,13 +52,15 @@ backend/
 │   │       ├── control.py           # 控制指令下发 / 拉取 / ACK
 │   │       ├── log.py               # 操作日志 / 语音日志 查询与创建
 │   │       ├── admin.py             # 管理员 API（用户/设备管理/统计）
-│   │       └── ai.py                # AI 分析（评分/风险/建议/周报）
+│   │       ├── ai.py                # AI 分析（评分/风险/建议/周报）
+│   │       └── ota.py               # 固件上传、MQTT OTA 推送、推送日志
 │   ├── models/
 │   │   ├── user.py                  # 用户（含 role 字段）
 │   │   ├── device.py                # 设备
 │   │   ├── sensor_data.py           # 传感器数据
 │   │   ├── operation_log.py         # 操作日志
-│   │   └── voice_log.py             # 语音日志
+│   │   ├── voice_log.py             # 语音日志
+│   │   └── ota_log.py               # OTA 推送与设备确认结果
 │   ├── schemas/                     # Pydantic 请求/响应模型
 │   ├── services/
 │   │   ├── auth_service.py          # JWT 编解码 / 密码哈希
@@ -83,6 +86,7 @@ backend/
 │   ├── create_admin.py              # 创建管理员账号
 │   ├── init_db.py                   # 初始化数据库
 │   ├── seed_demo.py                 # 生成本地演示账号、设备和历史数据
+│   ├── simulate_ota_device.py       # 模拟版本检查、固件下载、MD5 和 ACK
 │   └── tianmu_proxy.py              # 前后端单域名 HTTP/WebSocket 反向代理
 ├── tests/
 ├── Dockerfile
@@ -292,6 +296,19 @@ python -m pytest tests/
 | GET  | `/api/v1/log/voice`     | 查询语音日志 |
 | POST | `/api/v1/log/voice`     | 创建语音日志 |
 
+### OTA 固件更新
+
+| 方法 | 路径 | 说明 |
+|---|---|---|
+| POST | `/api/v1/ota/firmware?version=<version>` | 管理员上传 `.bin`，返回 URL、MD5 和文件大小 |
+| POST | `/api/v1/ota/push` | 向单个设备或全部在线设备发送 `type: "ota_update"` |
+| GET | `/api/v1/ota/logs` | 查询 OTA 下发和设备确认结果 |
+| GET | `/firmware/<filename>.bin` | ESP32 固件下载地址 |
+
+设备也可以主动发送 `version_check`。后端会从 `data/firmware/` 选择最高版本，计算 MD5，并返回 `code=200` 的更新信息或 `code=204` 的“已是最新版本”。ESP32 更新完成后返回 `control_ack`，最近一条对应 OTA 日志会更新为 `success` 或 `failed`。
+
+当前 OTA 主链路已经与 ESP32-S3 实机联调完成，包括版本检查、MQTT 指令、固件下载、MD5 校验、烧录、重启和 ACK 回传。`.bin` 固件属于部署产物，保存在 `data/firmware/`，不会提交到 Git。
+
 ### 管理员
 
 | 方法     | 路径                                     | 说明      |
@@ -367,11 +384,10 @@ VITE_WS_BASE_URL=
 | `WEATHER_API_URL`     | 空                                    | 天气 API，正在开发中，非 MVP |
 | `WECHAT_WEBHOOK_URL`  | 空                                    | 企业微信 Webhook，正在开发中，非 MVP |
 
-## 正在开发中 / 已砍出当前 MVP
+## 正在开发中 / 非当前 MVP
 
-以下文件或能力保留在项目中，但当前不作为比赛 MVP 交付范围：
+以下能力保留在项目中，但当前不作为比赛 MVP 交付范围：
 
-- `app/api/v1/ota.py`：OTA 固件接口已挂载，用于硬件联调；实际 `.bin` 固件产物放在 `data/firmware/`，不提交到 Git。
 - `app/services/tts_service.py`：TTS 语音合成预留。
 - `app/services/weather_service.py`：天气服务预留。
 - `app/services/wechat_service.py`：微信推送预留。

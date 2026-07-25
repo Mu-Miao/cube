@@ -29,7 +29,7 @@ class OtaLog(BaseModel):
     # 固件文件 MD5 校验值
     firmware_md5: Mapped[str] = mapped_column(String(32), nullable=False)
 
-    # 推送状态: pushed=已下发 / failed=下发失败
+    # 推送状态: pushed=已下发 / success=设备确认成功 / failed=下发或执行失败
     status: Mapped[str] = mapped_column(String(20), default="pushed", nullable=False)
 
     # 执行推送的管理员用户 ID

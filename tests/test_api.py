@@ -3,6 +3,7 @@
 
 import json
 import time
+from contextlib import asynccontextmanager
 from pathlib import Path
 
 import pytest
@@ -10,8 +11,10 @@ from httpx import AsyncClient
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.mqtt.handlers import _latest_firmware
+from app.models.ota_log import OtaLog
 from app.models.user import User
+from app.mqtt.client import MQTTClient
+from app.mqtt.handlers import _handle_control_ack, _latest_firmware
 
 
 @pytest.mark.asyncio
@@ -302,6 +305,61 @@ async def test_ota_push_publishes_hardware_payload(
         "version": "1.1.0",
         "md5": "d41d8cd98f00b204e9800998ecf8427e",
     }
+
+    @asynccontextmanager
+    async def use_test_session():
+        yield db_session
+
+    async def fake_broadcast(*_args) -> None:
+        return None
+
+    monkeypatch.setattr("app.mqtt.handlers.async_session_factory", use_test_session)
+    monkeypatch.setattr("app.mqtt.handlers.ws_manager.broadcast_control_result", fake_broadcast)
+
+    await _handle_control_ack(
+        device_id,
+        {
+            "command": "ota_update",
+            "value": "1.1.0",
+            "result": "success",
+            "message": "firmware flashed and rebooted",
+        },
+    )
+    ota_log = (
+        await db_session.execute(
+            select(OtaLog).where(
+                OtaLog.device_id == device_id,
+                OtaLog.target_version == "1.1.0",
+            )
+        )
+    ).scalar_one()
+    assert ota_log.status == "success"
+    assert ota_log.remark == "firmware flashed and rebooted"
+
+    async def failed_publish(_topic: str, _payload: bytes) -> None:
+        raise RuntimeError("MQTT 未连接，消息未发送")
+
+    monkeypatch.setattr("app.api.v1.ota.mqtt_client.publish", failed_publish)
+    failed_resp = await client.post(
+        "/api/v1/ota/push",
+        json={
+            "device_id": device_id,
+            "version": "1.2.0",
+            "url": "https://tianmuzc.site/firmware/v1.2.0.bin",
+            "md5": "d41d8cd98f00b204e9800998ecf8427e",
+        },
+        headers=headers,
+    )
+    assert failed_resp.json()["code"] == 500
+    assert "MQTT 未连接" in failed_resp.json()["message"]
+
+
+@pytest.mark.asyncio
+async def test_mqtt_publish_rejects_disconnected_client():
+    client = MQTTClient()
+
+    with pytest.raises(RuntimeError, match="MQTT 未连接"):
+        await client.publish("cube2026/server/OTA001/control", b"{}")
 
 
 @pytest.mark.asyncio
