@@ -111,7 +111,7 @@
 
 <script setup lang="ts">
 import { ref, computed, onMounted, onBeforeUnmount, watch } from 'vue'
-import * as echarts from 'echarts'
+import type { ECharts } from 'echarts'
 import { useDeviceStore } from '@/store/device'
 import { getLatestData, getDeviceList } from '@/api/device'
 import { getAiSuggestions, getEnvironmentScore, getRiskWarnings, getWeeklyReport } from '@/api/ai'
@@ -298,7 +298,16 @@ function getApiErrorMessage(err: unknown, fallback: string) {
 
 // ---------- 环形进度图（ECharts gauge） ----------
 const gaugeChartRef = ref<HTMLElement>()
-let gaugeChart: echarts.ECharts | null = null
+type EchartsModule = typeof import('echarts')
+let echartsModule: EchartsModule | null = null
+let echartsLoadPromise: Promise<EchartsModule> | null = null
+let gaugeChart: ECharts | null = null
+
+async function loadEcharts() {
+  echartsLoadPromise ??= import('echarts')
+  echartsModule = await echartsLoadPromise
+  return echartsModule
+}
 
 function getScoreColor(score: number): string {
   if (score >= 70) return '#10B981'
@@ -306,8 +315,10 @@ function getScoreColor(score: number): string {
   return '#EF4444'
 }
 
-function initGaugeChart() {
+async function initGaugeChart() {
   if (!gaugeChartRef.value) return
+  const echarts = await loadEcharts()
+  if (!gaugeChartRef.value || gaugeChart) return
   gaugeChart = echarts.init(gaugeChartRef.value)
   renderGaugeChart()
 }
@@ -387,7 +398,7 @@ function renderGaugeChart() {
 
 // ---------- 本周环境周报（ECharts 柱状+折线混合图） ----------
 const weeklyChartRef = ref<HTMLElement>()
-let weeklyChart: echarts.ECharts | null = null
+let weeklyChart: ECharts | null = null
 
 // 模拟 7 天数据
 const weekDays = ['周一', '周二', '周三', '周四', '周五', '周六', '周日']
@@ -397,8 +408,10 @@ const mockWeeklyData = {
   aqi: [35, 42, 38, 50, 45, 40, 36],
 }
 
-function initWeeklyChart() {
+async function initWeeklyChart() {
   if (!weeklyChartRef.value) return
+  const echarts = await loadEcharts()
+  if (!weeklyChartRef.value || weeklyChart) return
   weeklyChart = echarts.init(weeklyChartRef.value)
   updateWeeklyChart(weekDays, mockWeeklyData.temperature, mockWeeklyData.humidity, mockWeeklyData.aqi)
 }
@@ -409,7 +422,7 @@ function updateWeeklyChart(
   humidity: number[],
   aqi: number[],
 ) {
-  if (!weeklyChart) return
+  if (!weeklyChart || !echartsModule) return
   weeklyChart.setOption({
     tooltip: {
       trigger: 'axis',
@@ -460,7 +473,7 @@ function updateWeeklyChart(
         data: temperature,
         barWidth: '20%',
         itemStyle: {
-          color: new echarts.graphic.LinearGradient(0, 0, 0, 1, [
+          color: new echartsModule.graphic.LinearGradient(0, 0, 0, 1, [
             { offset: 0, color: '#06B6D4' },
             { offset: 1, color: 'rgba(6, 182, 212, 0.2)' },
           ]),
@@ -478,7 +491,7 @@ function updateWeeklyChart(
         lineStyle: { color: '#3B82F6', width: 2 },
         itemStyle: { color: '#3B82F6' },
         areaStyle: {
-          color: new echarts.graphic.LinearGradient(0, 0, 0, 1, [
+          color: new echartsModule.graphic.LinearGradient(0, 0, 0, 1, [
             { offset: 0, color: 'rgba(59, 130, 246, 0.15)' },
             { offset: 1, color: 'rgba(59, 130, 246, 0)' },
           ]),
@@ -538,8 +551,7 @@ async function ensureDeviceSelected() {
 }
 
 onMounted(async () => {
-  initGaugeChart()
-  initWeeklyChart()
+  await Promise.all([initGaugeChart(), initWeeklyChart()])
   await ensureDeviceSelected()
   fetchSensorData()
   fetchAiAnalysis()

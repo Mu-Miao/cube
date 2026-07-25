@@ -53,7 +53,7 @@
 
 <script setup lang="ts">
 import { onMounted, ref, watch } from 'vue'
-import { ElMessage } from 'element-plus'
+import { ElMessage } from 'element-plus/es/components/message/index.mjs'
 import { getOperationLogs, getVoiceLogs, type OperationLogItem, type VoiceLogItem } from '@/api/log'
 
 defineOptions({ name: 'LogCenterPage' })

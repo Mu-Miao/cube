@@ -9,7 +9,7 @@
   >
     <div class="mascot-companion__aura" />
     <div class="mascot-companion__image-wrap">
-      <img class="mascot-companion__image" :src="currentImage" :alt="`${title} 吉祥物`" />
+      <img class="mascot-companion__image" :src="currentImage" :alt="`${title} 吉祥物`" loading="lazy" decoding="async" />
     </div>
     <div class="mascot-companion__content">
       <div class="mascot-companion__status">
@@ -30,7 +30,6 @@
 
 <script setup lang="ts">
 import { computed } from 'vue'
-import bootSleep from '@/assets/mascot/boot_sleep.gif'
 import roleCelebrate from '@/assets/mascot/role_celebrate.webp'
 import roleFocus from '@/assets/mascot/role_focus.webp'
 import roleNormal from '@/assets/mascot/role_normal.webp'
@@ -67,7 +66,7 @@ const stateMap: Record<
   }
 > = {
   boot: {
-    image: bootSleep,
+    image: '/boot_sleep.gif',
     label: '启动中',
     message: '正在连接桌面魔方。',
     tone: 'calm',

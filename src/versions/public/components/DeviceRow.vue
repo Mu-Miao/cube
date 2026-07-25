@@ -3,7 +3,7 @@
     class="device-row"
     :class="{ 'device-row--large': size === 'large', 'device-row--offline': device.status === 'offline' }"
   >
-    <img :src="device.status === 'online' ? '/online.png' : '/offline.png'" alt="" />
+    <img :src="device.status === 'online' ? '/online.png' : '/offline.png'" alt="" loading="lazy" decoding="async" />
     <span class="device-row__main">
       <strong>{{ device.name }}</strong>
       <small>{{ device.subtitle }}</small>

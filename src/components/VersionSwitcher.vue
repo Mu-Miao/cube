@@ -23,9 +23,15 @@
         class="version-switcher__option"
         :class="{ 'version-switcher__option--active': mode.id === currentMode }"
         :href="getModeHref(mode.id)"
+        :aria-current="mode.id === currentMode ? 'page' : undefined"
         @click="mode.id === currentMode && $event.preventDefault()"
       >
-        <span>{{ mode.title }}</span>
+        <span>
+          {{ mode.title }}
+          <svg v-if="mode.id === currentMode" viewBox="0 0 24 24" aria-hidden="true">
+            <path d="M9.2 16.6 4.9 12.3l-1.4 1.4 5.7 5.7L21 7.6 19.6 6.2 9.2 16.6Z" />
+          </svg>
+        </span>
         <small>{{ mode.description }}</small>
       </a>
     </div>
@@ -48,7 +54,7 @@ const route = useRoute()
 const menuOpen = ref(false)
 
 const currentMode = computed<AppModeId>(() => {
-  if (route.path.startsWith('/public')) return 'public'
+  if (route.path.startsWith('/public') || route.path === '/login' || route.path === '/register') return 'public'
   if (route.path.startsWith('/senior')) return 'senior'
   return 'teen'
 })
@@ -167,13 +173,34 @@ watch(
   background: rgba(255, 255, 255, 0.08);
 }
 
+.version-switcher__option--active {
+  border-color: rgba(96, 165, 250, 0.56);
+  background: rgba(37, 99, 235, 0.22);
+  box-shadow: inset 0 0 0 1px rgba(147, 197, 253, 0.18);
+}
+
 .version-switcher__option span {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
   font-weight: 800;
+}
+
+.version-switcher__option span svg {
+  width: 16px;
+  height: 16px;
+  flex: 0 0 auto;
+  fill: #93c5fd;
 }
 
 .version-switcher__option small {
   color: rgba(245, 245, 247, 0.56);
   line-height: 1.45;
+}
+
+.version-switcher__option--active small {
+  color: rgba(245, 245, 247, 0.72);
 }
 
 .version-switcher--dark .version-switcher__button {

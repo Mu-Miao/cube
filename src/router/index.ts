@@ -16,14 +16,14 @@ const router = createRouter({
     {
       path: '/login',
       name: 'login',
-      component: () => import('@/views/Login.vue'),
+      component: () => import('@/versions/public/App.vue'),
       meta: { requiresAuth: false },
     },
     // 注册页（无需认证）
     {
       path: '/register',
       name: 'register',
-      component: () => import('@/views/Register.vue'),
+      component: () => import('@/versions/public/App.vue'),
       meta: { requiresAuth: false },
     },
     {
@@ -82,32 +82,32 @@ const router = createRouter({
     },
     {
       path: '/',
-      redirect: '/teen/dashboard',
+      redirect: '/public',
     },
     {
       path: '/dashboard',
-      redirect: '/teen/dashboard',
+      redirect: '/public',
     },
     {
       path: '/devices',
-      redirect: '/teen/devices',
+      redirect: '/public',
     },
     {
       path: '/control',
-      redirect: '/teen/control',
+      redirect: '/public',
     },
     {
       path: '/ai-analysis',
-      redirect: '/teen/ai-analysis',
+      redirect: '/public',
     },
     {
       path: '/logs',
-      redirect: '/teen/logs',
+      redirect: '/public',
     },
-    // 404 兜底：重定向到控制台
+    // 404 兜底：默认进入大众版
     {
       path: '/:pathMatch(.*)*',
-      redirect: '/teen/dashboard',
+      redirect: '/public',
     },
   ],
 })
@@ -132,9 +132,9 @@ router.beforeEach((to) => {
     return { name: 'login' }
   }
 
-  // 已登录用户访问登录页或注册页：重定向到控制台
+  // 已登录用户访问登录页或注册页：进入大众版控制台
   if ((to.name === 'login' || to.name === 'register') && authStore.isLoggedIn) {
-    return { path: '/teen/dashboard' }
+    return { path: '/public' }
   }
 })
 

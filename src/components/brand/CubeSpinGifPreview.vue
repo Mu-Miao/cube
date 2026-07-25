@@ -1,7 +1,7 @@
 <template>
   <div class="digital-twin cube-spin-preview" :class="{ 'cube-spin-preview--offline': offline }">
     <div class="cube-spin-preview__aura" aria-hidden="true"></div>
-    <img class="cube-spin-preview__image" :src="previewImage" :alt="label" draggable="false" />
+    <img class="cube-spin-preview__image" :src="previewImage" :alt="label" loading="lazy" decoding="async" draggable="false" />
     <div class="cube-spin-preview__grid" aria-hidden="true"></div>
   </div>
 </template>
@@ -9,7 +9,7 @@
 <script setup lang="ts">
 defineOptions({ name: 'CubeSpinGifPreview' })
 
-const props = withDefaults(
+withDefaults(
   defineProps<{
     label?: string
     offline?: boolean

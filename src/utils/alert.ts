@@ -1,4 +1,5 @@
-import { ElMessage, ElNotification } from 'element-plus'
+import { ElMessage } from 'element-plus/es/components/message/index.mjs'
+import { ElNotification } from 'element-plus/es/components/notification/index.mjs'
 
 // 普通提示（右上角弹出，5秒自动消失）
 export function showInfoToast(message: string) {

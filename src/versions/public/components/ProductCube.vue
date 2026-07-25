@@ -2,7 +2,7 @@
   <div class="product-cube" :class="`product-cube--${variant}`" aria-label="智能桌面魔方模型预览">
     <div class="product-cube__halo"></div>
     <div class="product-cube__visual">
-      <img class="product-cube__image" src="/smart-cube-transparent.png" alt="智能桌面魔方渲染图" />
+      <img class="product-cube__image" src="/smart-cube-transparent.png" alt="智能桌面魔方渲染图" decoding="async" />
       <div class="product-cube__screen" aria-label="魔方屏幕实时数据">
         <HardwareTwinScreen :data="sensor" :online="online" :focus="focus" />
       </div>

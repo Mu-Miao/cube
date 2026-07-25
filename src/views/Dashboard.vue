@@ -392,21 +392,22 @@
 </template>
 
 <script setup lang="ts">
-import { ref, reactive, computed, onMounted, onUnmounted, watch, nextTick } from 'vue'
-import { ElMessage } from 'element-plus'
-import * as echarts from 'echarts'
+import { ref, reactive, computed, defineAsyncComponent, onMounted, onUnmounted, watch, nextTick } from 'vue'
+import { ElMessage } from 'element-plus/es/components/message/index.mjs'
+import type { ECharts, EChartsOption } from 'echarts'
 import DeviceOverviewCard from '@/components/DeviceOverviewCard.vue'
 import SensorCard from '@/components/SensorCard.vue'
 import SensorMiniCard from '@/components/SensorMiniCard.vue'
 import ControlToggle from '@/components/ControlToggle.vue'
 import GasAlertBanner from '@/components/GasAlertBanner.vue'
-import MascotCompanion from '@/components/brand/MascotCompanion.vue'
-import MineradioParticleStage from '@/components/brand/MineradioParticleStage.vue'
-import CubeSpinGifPreview from '@/components/brand/CubeSpinGifPreview.vue'
-import HardwareTwinScreen from '@/components/brand/HardwareTwinScreen.vue'
 import { getDeviceList, bindDevice, getLatestData, sendControlCommand } from '@/api/device'
 import { useWebSocket } from '@/composables/useWebSocket'
 import { useDeviceStore } from '@/store/device'
+
+const MascotCompanion = defineAsyncComponent(() => import('@/components/brand/MascotCompanion.vue'))
+const MineradioParticleStage = defineAsyncComponent(() => import('@/components/brand/MineradioParticleStage.vue'))
+const CubeSpinGifPreview = defineAsyncComponent(() => import('@/components/brand/CubeSpinGifPreview.vue'))
+const HardwareTwinScreen = defineAsyncComponent(() => import('@/components/brand/HardwareTwinScreen.vue'))
 
 defineOptions({ name: 'DashboardPage' })
 
@@ -419,7 +420,10 @@ const deviceStore = useDeviceStore()
 const showBindDialog = ref(false)
 const bindLoading = ref(false)
 const chartRef = ref<HTMLElement>()
-let chart: echarts.ECharts | null = null
+type EchartsModule = typeof import('echarts')
+let echartsModule: EchartsModule | null = null
+let echartsLoadPromise: Promise<EchartsModule> | null = null
+let chart: ECharts | null = null
 
 const selectedDeviceId = ref('')
 const launchingDeviceId = ref('')
@@ -435,7 +439,7 @@ const twinFlightDirection = ref<'enter' | 'return'>('enter')
 const twinFlightStyle = ref<Record<string, string>>({})
 const twinFlightLabel = ref('Twin Model')
 const twinFlightOffline = ref(false)
-let twinFlightCleanupTimer = 0
+const twinFlightCleanupTimer = 0
 let sensorPollingTimer = 0
 
 const airLegend = [
@@ -793,11 +797,19 @@ function pushTrendData() {
 // ECharts 趋势图
 // ============================================================
 
-function initChart() {
+async function loadEcharts() {
+  echartsLoadPromise ??= import('echarts')
+  echartsModule = await echartsLoadPromise
+  return echartsModule
+}
+
+async function initChart() {
   if (!chartRef.value) return
+  const echarts = await loadEcharts()
+  if (!chartRef.value || chart) return
   chart = echarts.init(chartRef.value)
 
-  const option: echarts.EChartsOption = {
+  const option: EChartsOption = {
     backgroundColor: 'transparent',
     tooltip: {
       trigger: 'axis',
@@ -1122,7 +1134,7 @@ async function leaveInlineControl() {
   setNavigationHighlight(null)
   await nextTick()
   await waitForPaintFrames(1)
-  initChart()
+  await initChart()
   updateChart()
 }
 
@@ -1189,7 +1201,7 @@ watch(selectedDeviceId, (newId) => {
 onMounted(() => {
   fetchDevices()
   nextTick(() => {
-    initChart()
+    void initChart()
   })
 
   // 建立 WebSocket 连接

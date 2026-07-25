@@ -2,8 +2,8 @@
   <main class="senior-app">
     <section v-if="!isSignedIn" class="login-page">
       <div class="login-copy">
-        <img src="/tmzc-logo.svg" alt="" class="brand-logo" />
-        <p class="eyebrow">天目智护版</p>
+        <img src="/tmzc-logo.svg" alt="" class="brand-logo" decoding="async" />
+        <p class="eyebrow">天幕智护版</p>
         <h1>看得清，点得准，家里环境一眼明白。</h1>
         <p>
           老年人专用界面保留设备监测、灯光控制、提醒、AI 建议和操作记录，
@@ -77,7 +77,7 @@
 
       <section v-if="activeView === 'home'" class="view view-home">
         <div class="comfort-card">
-          <img src="/smart-cube-transparent.png" alt="智能桌面魔方渲染图" class="comfort-card__render" />
+          <img src="/smart-cube-transparent.png" alt="智能桌面魔方渲染图" class="comfort-card__render" decoding="async" />
           <p class="eyebrow">当前舒适度</p>
           <strong>{{ scoreText }}</strong>
           <span>{{ scoreSummary }}</span>
@@ -214,35 +214,63 @@
           </button>
         </div>
 
-        <div class="advice-grid">
+        <div class="advice-layout">
+          <section class="panel weekly-panel">
+            <div class="panel-heading">
+              <h2>本周趋势</h2>
+              <span>{{ weeklySource || '待获取' }}</span>
+            </div>
+            <div class="weekly-report" aria-label="本周环境周报">
+              <article
+                v-for="day in weeklyCards"
+                :key="day.key"
+                class="weekly-day"
+                :class="`weekly-day--${day.tone}`"
+              >
+                <div class="weekly-day__header">
+                  <strong>{{ day.label }}</strong>
+                  <span>{{ day.status }}</span>
+                </div>
+                <div class="weekly-day__metrics">
+                  <div>
+                    <b>温度</b>
+                    <i><em :style="{ width: day.temperatureWidth }"></em></i>
+                    <small>{{ day.temperatureText }}</small>
+                  </div>
+                  <div>
+                    <b>湿度</b>
+                    <i><em :style="{ width: day.humidityWidth }"></em></i>
+                    <small>{{ day.humidityText }}</small>
+                  </div>
+                  <div>
+                    <b>AQI</b>
+                    <i><em :style="{ width: day.aqiWidth }"></em></i>
+                    <small>{{ day.aqiText }}</small>
+                  </div>
+                </div>
+              </article>
+            </div>
+            <p class="weekly-text">{{ weeklySummary || weeklySummaryFallback }}</p>
+          </section>
+
+          <section class="panel reminders-panel">
+            <div class="panel-heading">
+              <h2>提醒列表</h2>
+              <span>{{ adviceItems.length }} 条</span>
+            </div>
+            <article v-for="item in adviceItems" :key="item.title" class="advice-row" :class="`tone-${item.tone}`">
+              <strong>{{ item.title }}</strong>
+              <p>{{ item.body }}</p>
+              <small>{{ item.source }}</small>
+            </article>
+          </section>
+
           <section class="panel score-panel">
             <span>今日评分</span>
             <strong>{{ scoreText }}</strong>
             <p>{{ scoreSummary }}</p>
           </section>
-          <section class="panel">
-            <div class="panel-heading">
-              <h2>本周趋势</h2>
-              <span>{{ weeklySource || '待获取' }}</span>
-            </div>
-            <div class="simple-bars" aria-label="本周空气质量趋势">
-              <i v-for="(value, index) in weeklyBars" :key="index" :style="{ height: `${value}%` }"></i>
-            </div>
-            <p class="weekly-text">{{ weeklySummary || '暂无周报，请先选择设备并刷新。' }}</p>
-          </section>
         </div>
-
-        <section class="panel">
-          <div class="panel-heading">
-            <h2>提醒列表</h2>
-            <span>{{ adviceItems.length }} 条</span>
-          </div>
-          <article v-for="item in adviceItems" :key="item.title" class="advice-row" :class="`tone-${item.tone}`">
-            <strong>{{ item.title }}</strong>
-            <p>{{ item.body }}</p>
-            <small>{{ item.source }}</small>
-          </article>
-        </section>
       </section>
 
       <section v-else class="view">
@@ -322,7 +350,15 @@ const environmentScore = ref<number | null>(null)
 const scoreSummary = ref('选择设备后，可以查看环境是否适合休息。')
 const weeklySummary = ref('')
 const weeklySource = ref('')
-const weeklyValues = ref<number[]>([])
+type WeeklyDayReading = {
+  date: string
+  temperature: number | null
+  humidity: number | null
+  aqi: number | null
+  sample_count?: number
+}
+
+const weeklyDays = ref<WeeklyDayReading[]>([])
 const operationLogs = ref<OperationLog[]>([])
 const bindForm = reactive({ deviceId: '', deviceName: '' })
 const brightness = ref(70)
@@ -410,11 +446,84 @@ const adviceItems = computed(() => {
 })
 
 const topAdvice = computed(() => adviceItems.value.slice(0, 2))
-const weeklyBars = computed(() => (weeklyValues.value.length ? weeklyValues.value : [42, 48, 44, 52, 47, 43, 49]))
+const weeklyCards = computed(() => {
+  const readings = weeklyDays.value.length ? weeklyDays.value : buildFallbackWeeklyDays()
+
+  return readings.slice(-7).map((day, index) => {
+    const status = getWeeklyDayStatus(day)
+    return {
+      key: `${day.date || 'day'}-${index}`,
+      label: formatWeekdayLabel(day.date, index),
+      status: status.label,
+      tone: status.tone,
+      temperatureText: formatWeeklyMetric(day.temperature, '℃'),
+      humidityText: formatWeeklyMetric(day.humidity, '%'),
+      aqiText: formatWeeklyMetric(day.aqi, ''),
+      temperatureWidth: metricWidth(day.temperature, 16, 34),
+      humidityWidth: metricWidth(day.humidity, 30, 85),
+      aqiWidth: metricWidth(day.aqi, 0, 180),
+    }
+  })
+})
+
+const weeklySummaryFallback = computed(() => {
+  const latest = weeklyCards.value.at(-1)
+  if (!selectedDevice.value) return '请选择设备后刷新周报。'
+  return latest ? `最近状态为「${latest.status}」，重点看温度、湿度和空气质量。` : '暂无周报，请先选择设备并刷新。'
+})
 
 function formatMetric(value: number | null | undefined) {
   if (value === null || value === undefined || Number.isNaN(value)) return '--'
   return Number.isInteger(value) ? String(value) : value.toFixed(1)
+}
+
+function formatWeeklyMetric(value: number | null | undefined, unit: string) {
+  if (value === null || value === undefined || Number.isNaN(value)) return '--'
+  const text = Number.isInteger(value) ? String(value) : value.toFixed(1)
+  return unit ? `${text}${unit}` : text
+}
+
+function metricWidth(value: number | null | undefined, min: number, max: number) {
+  if (value === null || value === undefined || Number.isNaN(value)) return '10%'
+  const normalized = Math.max(0, Math.min(1, (value - min) / (max - min)))
+  return `${Math.round(18 + normalized * 82)}%`
+}
+
+function formatWeekdayLabel(date: string, index: number) {
+  const parsed = new Date(date)
+  if (!Number.isNaN(parsed.getTime())) {
+    return new Intl.DateTimeFormat('zh-CN', { weekday: 'short' }).format(parsed)
+  }
+
+  const fallback = ['周一', '周二', '周三', '周四', '周五', '周六', '周日']
+  return fallback[index % fallback.length]
+}
+
+function getWeeklyDayStatus(day: WeeklyDayReading): { label: string; tone: 'good' | 'watch' | 'alert' } {
+  if ((day.aqi ?? 0) >= 150) return { label: '空气差', tone: 'alert' }
+  if ((day.aqi ?? 0) >= 100) return { label: '留意空气', tone: 'watch' }
+  if ((day.humidity ?? 0) >= 75) return { label: '偏湿', tone: 'watch' }
+  if ((day.humidity ?? 100) <= 35) return { label: '偏干', tone: 'watch' }
+  if ((day.temperature ?? 22) >= 30) return { label: '偏热', tone: 'watch' }
+  if ((day.temperature ?? 22) <= 18) return { label: '偏冷', tone: 'watch' }
+  return { label: '舒适', tone: 'good' }
+}
+
+function buildFallbackWeeklyDays(): WeeklyDayReading[] {
+  const today = new Date()
+  const sensor = selectedSensor.value
+
+  return Array.from({ length: 7 }, (_, index) => {
+    const date = new Date(today)
+    date.setDate(today.getDate() - (6 - index))
+    const drift = index - 3
+    return {
+      date: date.toISOString(),
+      temperature: typeof sensor?.temperature === 'number' ? Math.max(0, sensor.temperature + drift * 0.25) : null,
+      humidity: typeof sensor?.humidity === 'number' ? Math.max(0, sensor.humidity + drift * 0.8) : null,
+      aqi: typeof sensor?.aqi === 'number' ? Math.max(0, sensor.aqi + drift * 1.5) : null,
+    }
+  })
 }
 
 function metricTone(value: number | null | undefined, min: number, max: number, lowerIsBetter = false): Tone {
@@ -481,6 +590,16 @@ function toggleAuthMode() {
 async function handleAuth() {
   if (!authForm.username || !authForm.password) {
     authMessage.value = '请输入账号和密码'
+    authMessageIsError.value = true
+    return
+  }
+  if (authMode.value === 'register' && authForm.username.trim().length < 2) {
+    authMessage.value = '用户名至少 2 个字符'
+    authMessageIsError.value = true
+    return
+  }
+  if (authMode.value === 'register' && authForm.password.length < 6) {
+    authMessage.value = '密码至少 6 个字符'
     authMessageIsError.value = true
     return
   }
@@ -585,7 +704,7 @@ async function loadAiData(forceLlm: boolean) {
     suggestionSource.value = suggestions.source || (forceLlm ? 'llm' : 'rule')
     weeklySummary.value = weekly.summary || ''
     weeklySource.value = weekly.source === 'llm' ? 'LLM 周报' : '规则周报'
-    weeklyValues.value = weekly.days.map((day) => Math.max(8, Math.min(92, Number(day.aqi ?? 0))))
+    weeklyDays.value = weekly.days || []
   } catch (error) {
     showNotice(getErrorMessage(error, 'AI 分析失败'), 'error')
   } finally {

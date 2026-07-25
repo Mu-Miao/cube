@@ -165,7 +165,7 @@
 <script setup lang="ts">
 import { ref, reactive, computed, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
-import { ElMessage } from 'element-plus'
+import { ElMessage } from 'element-plus/es/components/message/index.mjs'
 import { Plus, Search, Box, WarningFilled } from '@element-plus/icons-vue'
 import DeviceStatusDot from '@/components/DeviceStatusDot.vue'
 import { useDeviceStore, type DeviceInfo } from '@/store/device'

@@ -432,6 +432,25 @@ button:focus-visible {
   grid-column: 1 / -1;
 }
 
+.advice-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1.35fr) minmax(20rem, 0.8fr);
+  gap: 1rem;
+  max-width: 82rem;
+  margin: 1rem auto 0;
+  align-items: start;
+}
+
+.weekly-panel,
+.reminders-panel,
+.score-panel {
+  min-width: 0;
+}
+
+.reminders-panel {
+  align-self: stretch;
+}
+
 .panel {
   padding: 1.15rem;
   border-radius: 18px;
@@ -572,13 +591,22 @@ button:focus-visible {
 
 .score-panel {
   display: grid;
-  gap: 0.5rem;
+  grid-column: 1 / -1;
+  grid-template-columns: minmax(8rem, max-content) 1fr;
+  gap: 0.6rem 1.5rem;
+  align-items: center;
 }
 
 .score-panel strong {
+  grid-row: 1 / span 2;
   color: var(--green);
   font-size: 4rem;
   line-height: 1;
+}
+
+.score-panel span,
+.score-panel p {
+  grid-column: 2;
 }
 
 .score-panel p,
@@ -587,21 +615,96 @@ button:focus-visible {
   color: var(--muted);
 }
 
-.simple-bars {
+.weekly-report {
   display: grid;
-  grid-template-columns: repeat(7, 1fr);
-  gap: 0.45rem;
-  align-items: end;
-  height: 9rem;
-  padding: 0.75rem;
-  border-radius: 14px;
+  grid-template-columns: repeat(auto-fit, minmax(12rem, 1fr));
+  gap: 0.75rem;
+  padding: 0.85rem;
+  border-radius: 16px;
   background: #f3f6ef;
 }
 
-.simple-bars i {
+.weekly-day {
+  min-width: 0;
+  padding: 0.85rem;
+  border: 1px solid rgba(31, 112, 71, 0.1);
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.68);
+}
+
+.weekly-day--good {
+  background: #e4f4e8;
+}
+
+.weekly-day--watch {
+  background: #fff4d8;
+}
+
+.weekly-day--alert {
+  background: #ffe5e2;
+}
+
+.weekly-day__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.4rem;
+  margin-bottom: 0.7rem;
+}
+
+.weekly-day__header strong {
+  color: var(--ink);
+  font-size: 1.1rem;
+  white-space: nowrap;
+}
+
+.weekly-day__header span {
+  padding: 0.2rem 0.45rem;
+  border-radius: 999px;
+  color: var(--green);
+  background: rgba(31, 112, 71, 0.11);
+  font-size: 0.78rem;
+  font-weight: 900;
+  white-space: nowrap;
+}
+
+.weekly-day__metrics {
+  display: grid;
+  gap: 0.55rem;
+}
+
+.weekly-day__metrics div {
+  display: grid;
+  grid-template-columns: 2.5rem minmax(3rem, 1fr) minmax(3.4rem, max-content);
+  gap: 0.45rem;
+  align-items: center;
+}
+
+.weekly-day__metrics b,
+.weekly-day__metrics small {
+  color: var(--muted);
+  font-size: 0.9rem;
+  font-weight: 900;
+}
+
+.weekly-day__metrics small {
+  text-align: right;
+  white-space: nowrap;
+}
+
+.weekly-day__metrics i {
   display: block;
-  min-height: 1rem;
-  border-radius: 999px 999px 6px 6px;
+  height: 0.42rem;
+  overflow: hidden;
+  border-radius: 999px;
+  background: rgba(31, 112, 71, 0.12);
+}
+
+.weekly-day__metrics em {
+  display: block;
+  height: 100%;
+  min-width: 0.35rem;
+  border-radius: inherit;
   background: var(--green);
 }
 
@@ -655,6 +758,7 @@ button:focus-visible {
   .home-columns,
   .device-layout,
   .advice-grid,
+  .advice-layout,
   .settings-grid {
     grid-template-columns: 1fr;
   }
@@ -676,6 +780,21 @@ button:focus-visible {
   .log-row {
     grid-template-columns: 1fr;
   }
+
+  .weekly-report {
+    grid-template-columns: repeat(auto-fit, minmax(12rem, 1fr));
+  }
+
+  .score-panel {
+    grid-template-columns: 1fr;
+  }
+
+  .score-panel strong,
+  .score-panel span,
+  .score-panel p {
+    grid-column: auto;
+    grid-row: auto;
+  }
 }
 
 @media (max-width: 640px) {
@@ -685,6 +804,10 @@ button:focus-visible {
 
   .senior-app {
     padding: 0.75rem;
+  }
+
+  .weekly-report {
+    grid-template-columns: 1fr;
   }
 
   .login-page {

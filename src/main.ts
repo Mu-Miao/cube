@@ -4,8 +4,6 @@
 
 import { createApp } from 'vue'
 import { createPinia } from 'pinia'
-import ElementPlus from 'element-plus'
-import 'element-plus/dist/index.css'
 
 import App from './App.vue'
 import router from './router'
@@ -20,10 +18,15 @@ const app = createApp(App)
 app.use(createPinia())
 
 // 注册 Vue Router（管理页面路由和导航守卫）
+router.beforeEach(async (to) => {
+  if (to.path.startsWith('/teen')) {
+    const { installElementPlus } = await import('@/plugins/elementPlus')
+    await installElementPlus(app)
+  }
+})
 app.use(router)
 
-// 注册 Element Plus（全套 UI 组件库）
-app.use(ElementPlus)
-
-// 挂载应用到 #app DOM 节点
-app.mount('#app')
+// 等首个路由组件加载完成后再挂载，避免启动 loader 被过早替换成空白/全局背景。
+router.isReady().then(() => {
+  app.mount('#app')
+})

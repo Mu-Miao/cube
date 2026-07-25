@@ -72,9 +72,10 @@
 <script setup lang="ts">
 import { ref, reactive } from 'vue'
 import { useRouter } from 'vue-router'
-import { ElMessage } from 'element-plus'
-import type { FormInstance, FormRules } from 'element-plus'
+import { ElMessage } from 'element-plus/es/components/message/index.mjs'
+import type { FormInstance, FormRules } from 'element-plus/es/components/form/index.mjs'
 import { register } from '@/api/auth'
+import { formatApiError } from '@/api/errors'
 import cubeLogoImg from '@/assets/brand/tmzc-logo.svg'
 
 defineOptions({
@@ -141,9 +142,7 @@ async function handleRegister() {
       router.push('/login')
     }, 1000)
   } catch (err: unknown) {
-    const error = err as { response?: { data?: { detail?: string; message?: string } } }
-    const msg = error.response?.data?.detail || error.response?.data?.message || '注册失败，请重试'
-    ElMessage.error(msg)
+    ElMessage.error(formatApiError(err, '注册失败，请检查用户名和密码格式'))
   } finally {
     loading.value = false
   }

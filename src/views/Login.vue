@@ -86,8 +86,9 @@
 <script setup lang="ts">
 import { ref, reactive } from 'vue'
 import { useRouter } from 'vue-router'
-import { ElMessage } from 'element-plus'
-import type { FormInstance, FormRules } from 'element-plus'
+import { ElMessage } from 'element-plus/es/components/message/index.mjs'
+import type { FormInstance, FormRules } from 'element-plus/es/components/form/index.mjs'
+import { formatApiError } from '@/api/errors'
 import { useAuthStore } from '@/store/auth'
 import { login } from '@/api/auth'
 import { disableDemoMode, enableDemoMode } from '@/utils/demo'
@@ -139,12 +140,7 @@ async function handleLogin() {
     ElMessage.success('登录成功')
     await router.push('/teen/dashboard')
   } catch (err: unknown) {
-    const error = err as { response?: { data?: { detail?: string; message?: string } } }
-    const msg =
-      error.response?.data?.detail ||
-      error.response?.data?.message ||
-      '登录失败，请检查用户名和密码'
-    ElMessage.error(msg)
+    ElMessage.error(formatApiError(err, '登录失败，请检查用户名和密码'))
   } finally {
     loading.value = false
   }

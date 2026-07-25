@@ -190,19 +190,20 @@
 </template>
 
 <script setup lang="ts">
-import { ref, reactive, computed, watch, onMounted, onUnmounted, nextTick } from 'vue'
+import { ref, reactive, computed, defineAsyncComponent, watch, onMounted, onUnmounted, nextTick } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { ElMessage } from 'element-plus'
+import { ElMessage } from 'element-plus/es/components/message/index.mjs'
 import { ArrowLeft, Monitor, WarningFilled } from '@element-plus/icons-vue'
 import DeviceStatusDot from '@/components/DeviceStatusDot.vue'
 import LightColorPicker from '@/components/LightColorPicker.vue'
 import ControlToggle from '@/components/ControlToggle.vue'
-import CubeSpinGifPreview from '@/components/brand/CubeSpinGifPreview.vue'
-import HardwareTwinScreen from '@/components/brand/HardwareTwinScreen.vue'
-import MineradioParticleStage from '@/components/brand/MineradioParticleStage.vue'
 import { useDeviceStore } from '@/store/device'
 import { getDeviceList, getLatestData, sendControlCommand, type SensorData } from '@/api/device'
 defineOptions({ name: 'ControlPage' })
+
+const CubeSpinGifPreview = defineAsyncComponent(() => import('@/components/brand/CubeSpinGifPreview.vue'))
+const HardwareTwinScreen = defineAsyncComponent(() => import('@/components/brand/HardwareTwinScreen.vue'))
+const MineradioParticleStage = defineAsyncComponent(() => import('@/components/brand/MineradioParticleStage.vue'))
 
 const route = useRoute()
 const router = useRouter()

@@ -34,5 +34,31 @@ export default defineConfig(({ mode }) => {
       host: '0.0.0.0',
       allowedHosts: ['tianmuzc.site', 'www.tianmuzc.site'],
     },
+    build: {
+      modulePreload: {
+        resolveDependencies(_: string, deps: string[]) {
+          return deps.filter((dep) => !dep.includes('element-plus') && !dep.includes('elementPlus'))
+        },
+      },
+      rollupOptions: {
+        output: {
+          manualChunks(id) {
+            if (!id.includes('node_modules')) return
+            if (id.includes('/echarts/')) return 'echarts'
+            if (id.includes('/three/') || id.includes('/@types/three/')) return 'three'
+            if (id.includes('/element-plus/') || id.includes('/@element-plus/')) return 'element-plus'
+            if (
+              id.includes('/vue/') ||
+              id.includes('/vue-router/') ||
+              id.includes('/pinia/')
+            ) {
+              return 'vue'
+            }
+            if (id.includes('/axios/')) return 'api-client'
+            return 'vendor'
+          },
+        },
+      },
+    },
   }
 })

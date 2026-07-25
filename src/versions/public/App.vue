@@ -342,14 +342,37 @@
                 <h2>本周环境</h2>
                 <small>{{ weeklySource }}</small>
               </div>
-              <div class="bar-chart">
-                <span
-                  v-for="(value, index) in weeklyReadings"
-                  :key="index"
-                  :style="{ height: `${value + 18}%` }"
-                ></span>
+              <div class="weekly-report" aria-label="本周环境周报">
+                <article
+                  v-for="day in weeklyCards"
+                  :key="day.key"
+                  class="weekly-report__day-card"
+                  :class="`weekly-report__day-card--${day.tone}`"
+                >
+                  <div class="weekly-report__day">
+                    <strong>{{ day.label }}</strong>
+                    <span>{{ day.status }}</span>
+                  </div>
+                  <div class="weekly-report__metrics">
+                    <div class="weekly-report__metric weekly-report__metric--temp">
+                      <b>温度</b>
+                      <div><i :style="{ width: day.temperatureWidth }"></i></div>
+                      <em>{{ day.temperatureText }}</em>
+                    </div>
+                    <div class="weekly-report__metric weekly-report__metric--humidity">
+                      <b>湿度</b>
+                      <div><i :style="{ width: day.humidityWidth }"></i></div>
+                      <em>{{ day.humidityText }}</em>
+                    </div>
+                    <div class="weekly-report__metric weekly-report__metric--aqi">
+                      <b>AQI</b>
+                      <div><i :style="{ width: day.aqiWidth }"></i></div>
+                      <em>{{ day.aqiText }}</em>
+                    </div>
+                  </div>
+                </article>
               </div>
-              <p class="weekly-summary">{{ weeklySummary }}</p>
+              <p class="weekly-summary">{{ weeklySummary || weeklySummaryFallback }}</p>
             </LiquidGlass>
             <LiquidGlass class="insight-list">
               <article v-for="item in insights" :key="item.title">
@@ -415,19 +438,20 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
+import { computed, defineAsyncComponent, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
 import '@/versions/public/styles/base.css'
 import { api, clearToken, getToken, setToken, type AiSuggestion, type DeviceInfo, type OperationLog, type SensorData } from '@/versions/public/api/client'
-import AuroraField from '@/versions/public/components/AuroraField.vue'
 import BlurReveal from '@/versions/public/components/BlurReveal.vue'
 import ControlRow from '@/versions/public/components/ControlRow.vue'
 import DeviceRow from '@/versions/public/components/DeviceRow.vue'
-import DotField from '@/versions/public/components/DotField.vue'
 import LiquidGlass from '@/versions/public/components/LiquidGlass.vue'
 import ProductCube from '@/versions/public/components/ProductCube.vue'
-import SideRays from '@/versions/public/components/SideRays.vue'
 import VersionSwitcher from '@/components/VersionSwitcher.vue'
 import type { Device as DeviceView, Insight } from '@/versions/public/data/mockData'
+
+const AuroraField = defineAsyncComponent(() => import('@/versions/public/components/AuroraField.vue'))
+const DotField = defineAsyncComponent(() => import('@/versions/public/components/DotField.vue'))
+const SideRays = defineAsyncComponent(() => import('@/versions/public/components/SideRays.vue'))
 
 const icons = {
   home: '<svg viewBox="0 0 24 24"><path d="M4 11.2 12 4l8 7.2V20a1 1 0 0 1-1 1h-5v-6h-4v6H5a1 1 0 0 1-1-1v-8.8Z"/></svg>',
@@ -455,6 +479,13 @@ const navItems = [
 type ViewId = (typeof navItems)[number]['id']
 type AppModeId = 'teen' | 'public' | 'senior'
 type AiMode = 'rule' | 'llm'
+type WeeklyDayReading = {
+  date: string
+  temperature: number | null
+  humidity: number | null
+  aqi: number | null
+  sample_count?: number
+}
 
 const currentMode: AppModeId = 'public'
 const activeView = ref<ViewId | 'settings'>('overview')
@@ -468,10 +499,14 @@ const isSignedIn = ref(Boolean(getToken()))
 const isMobileViewport = ref(false)
 const isTouchDevice = ref(false)
 
-const authMode = ref<'login' | 'register'>('login')
+const initialAuthMode = window.location.pathname === '/register' ? 'register' : 'login'
+const authMode = ref<'login' | 'register'>(initialAuthMode)
 const authLoading = ref(false)
 const authMessage = ref('')
-const authForm = reactive({ username: localStorage.getItem('username') || 'demo', password: 'demo123456' })
+const authForm = reactive({
+  username: initialAuthMode === 'register' ? '' : localStorage.getItem('username') || 'demo',
+  password: initialAuthMode === 'register' ? '' : 'demo123456',
+})
 
 const appLoading = ref(false)
 const aiLoading = ref(false)
@@ -488,7 +523,7 @@ const environmentScore = ref(0)
 const scoreSummary = ref('等待后端环境评分。')
 const weeklySummary = ref('')
 const weeklySource = ref('规则/LLM')
-const weeklyValues = ref<number[]>([])
+const weeklyDays = ref<WeeklyDayReading[]>([])
 const riskItems = ref<Array<{ field: string; level: 'warning' | 'critical'; title: string; message: string }>>([])
 const operationLogs = ref<OperationLog[]>([])
 const deviceSearch = ref('')
@@ -623,7 +658,30 @@ const insights = computed<Insight[]>(() => {
       ]
 })
 
-const weeklyReadings = computed(() => weeklyValues.value.length ? weeklyValues.value : [8, 12, 10, 14, 11, 9, 13])
+const weeklyCards = computed(() => {
+  const readings = weeklyDays.value.length ? weeklyDays.value : buildFallbackWeeklyDays()
+
+  return readings.slice(-7).map((day, index) => {
+    const status = getWeeklyDayStatus(day)
+    return {
+      key: `${day.date || 'day'}-${index}`,
+      label: formatWeekdayLabel(day.date, index),
+      status: status.label,
+      tone: status.tone,
+      temperatureText: formatWeeklyMetric(day.temperature, '°C'),
+      humidityText: formatWeeklyMetric(day.humidity, '%'),
+      aqiText: formatWeeklyMetric(day.aqi, ''),
+      temperatureWidth: metricWidth(day.temperature, 16, 34),
+      humidityWidth: metricWidth(day.humidity, 30, 85),
+      aqiWidth: metricWidth(day.aqi, 0, 180),
+    }
+  })
+})
+
+const weeklySummaryFallback = computed(() => {
+  const latest = weeklyCards.value.at(-1)
+  return latest ? `最近环境状态为「${latest.status}」，可重点关注温度、湿度和空气质量三项变化。` : '暂无本周环境数据。'
+})
 
 function toneIcon(tone: 'green' | 'blue' | 'amber') {
   if (tone === 'green') return icons.leaf
@@ -634,6 +692,57 @@ function toneIcon(tone: 'green' | 'blue' | 'amber') {
 function formatMetric(value: number | null | undefined) {
   if (value === null || value === undefined || Number.isNaN(value)) return '--'
   return Number.isInteger(value) ? String(value) : value.toFixed(1)
+}
+
+function formatWeeklyMetric(value: number | null | undefined, unit: string) {
+  if (value === null || value === undefined || Number.isNaN(value)) return '--'
+  const text = Number.isInteger(value) ? String(value) : value.toFixed(1)
+  return unit ? `${text}${unit}` : text
+}
+
+function metricWidth(value: number | null | undefined, min: number, max: number) {
+  if (value === null || value === undefined || Number.isNaN(value)) return '8%'
+  const normalized = Math.max(0, Math.min(1, (value - min) / (max - min)))
+  return `${Math.round(18 + normalized * 82)}%`
+}
+
+function formatWeekdayLabel(date: string, index: number) {
+  const parsed = new Date(date)
+  if (!Number.isNaN(parsed.getTime())) {
+    return new Intl.DateTimeFormat('zh-CN', { weekday: 'short' }).format(parsed)
+  }
+
+  const fallback = ['周一', '周二', '周三', '周四', '周五', '周六', '周日']
+  return fallback[index % fallback.length]
+}
+
+function getWeeklyDayStatus(day: WeeklyDayReading): { label: string; tone: 'good' | 'watch' | 'alert' } {
+  if ((day.aqi ?? 0) >= 150) return { label: '空气较差', tone: 'alert' }
+  if ((day.aqi ?? 0) >= 100) return { label: '空气关注', tone: 'watch' }
+  if ((day.humidity ?? 0) >= 75) return { label: '偏湿', tone: 'watch' }
+  if ((day.humidity ?? 100) <= 35) return { label: '偏干', tone: 'watch' }
+  if ((day.temperature ?? 22) >= 30) return { label: '偏热', tone: 'watch' }
+  if ((day.temperature ?? 22) <= 18) return { label: '偏冷', tone: 'watch' }
+  return { label: '舒适', tone: 'good' }
+}
+
+function buildFallbackWeeklyDays(): WeeklyDayReading[] {
+  const today = new Date()
+  const tempBase = activeDevice.value.temperature
+  const humidityBase = activeDevice.value.humidity
+  const aqiBase = activeDevice.value.aqi
+
+  return Array.from({ length: 7 }, (_, index) => {
+    const date = new Date(today)
+    date.setDate(today.getDate() - (6 - index))
+    const drift = index - 3
+    return {
+      date: date.toISOString(),
+      temperature: typeof tempBase === 'number' ? Math.max(0, tempBase + drift * 0.3) : null,
+      humidity: typeof humidityBase === 'number' ? Math.max(0, humidityBase + drift * 1.1) : null,
+      aqi: typeof aqiBase === 'number' ? Math.max(0, aqiBase + drift * 2) : null,
+    }
+  })
 }
 
 function normalizeDeviceName(device: DeviceInfo) {
@@ -702,6 +811,14 @@ function selectDevice(deviceId: string) {
 async function handleAuth() {
   if (!authForm.username || !authForm.password) {
     authMessage.value = '请输入账号和密码'
+    return
+  }
+  if (authMode.value === 'register' && authForm.username.trim().length < 2) {
+    authMessage.value = '用户名至少 2 个字符'
+    return
+  }
+  if (authMode.value === 'register' && authForm.password.length < 6) {
+    authMessage.value = '密码至少 6 个字符'
     return
   }
 
@@ -864,7 +981,7 @@ async function loadAiData(forceLlm = false) {
     riskItems.value = risks.risks || []
     weeklySummary.value = weekly.summary || ''
     weeklySource.value = weekly.source === 'llm' ? 'LLM 周报' : '规则周报'
-    weeklyValues.value = (weekly.days || []).map((day) => Math.max(day.humidity ?? day.aqi ?? day.temperature ?? 0, 0))
+    weeklyDays.value = weekly.days || []
   } catch (error) {
     if (forceLlm) throw error
     showStatus(getErrorMessage(error, 'AI 数据加载失败'), true)

@@ -96,14 +96,14 @@
     />
 
     <!-- 小眠 AI 聊天面板 -->
-    <ChatPanel :visible="chatOpen" :width="chatWidth" @toggle="chatOpen = !chatOpen" />
+    <ChatPanel v-if="chatOpen" :visible="chatOpen" :width="chatWidth" @toggle="chatOpen = !chatOpen" />
   </div>
 </template>
 
 <script setup lang="ts">
-import { computed, ref, onMounted, onUnmounted, watch } from 'vue'
+import { computed, defineAsyncComponent, ref, onMounted, onUnmounted, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { ElMessage } from 'element-plus'
+import { ElMessage } from 'element-plus/es/components/message/index.mjs'
 import {
   Monitor,
   Cpu,
@@ -116,14 +116,15 @@ import {
 import { useAuthStore } from '@/store/auth'
 import { isDemoMode } from '@/utils/demo'
 import { routeComponentLoaders, type PreloadableRoutePath } from '@/router/routeLoaders'
-import MascotCompanion from '@/components/brand/MascotCompanion.vue'
-import MineradioParticleStage from '@/components/brand/MineradioParticleStage.vue'
-import ChatPanel from '@/components/ChatPanel.vue'
 import VersionSwitcher from '@/components/VersionSwitcher.vue'
 import mascotNormalImg from '@/assets/mascot/role_normal.webp'
 import cubeLogoImg from '@/assets/brand/tmzc-logo.svg'
 
 defineOptions({ name: 'AppLayout' })
+
+const MascotCompanion = defineAsyncComponent(() => import('@/components/brand/MascotCompanion.vue'))
+const MineradioParticleStage = defineAsyncComponent(() => import('@/components/brand/MineradioParticleStage.vue'))
+const ChatPanel = defineAsyncComponent(() => import('@/components/ChatPanel.vue'))
 
 const route = useRoute()
 const router = useRouter()
