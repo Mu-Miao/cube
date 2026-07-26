@@ -21,6 +21,7 @@ from app.models.user import User
 from app.mqtt.client import mqtt_client
 from app.mqtt.topics import get_control_topic
 from app.schemas.base import ApiResponse
+from app.utils.timezone import shanghai_isoformat
 
 router = APIRouter(prefix="/ota", tags=["OTA 固件更新"])
 
@@ -292,7 +293,7 @@ async def get_ota_logs(
             "status": log.status,
             "pushed_by": log.pushed_by,
             "remark": log.remark,
-            "created_at": log.created_at.isoformat() if log.created_at else None,
+            "created_at": shanghai_isoformat(log.created_at),
         }
         for log in logs
     ]

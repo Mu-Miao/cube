@@ -16,6 +16,7 @@ from app.models.device import Device
 from app.models.operation_log import OperationLog
 from app.models.user import User
 from app.schemas.base import ApiResponse
+from app.services.device_service import refresh_stale_device_statuses
 
 router = APIRouter(prefix="/control", tags=["设备控制"])
 
@@ -78,6 +79,8 @@ async def send_control_command(
 
     if not device:
         return ApiResponse(code=3002, message="设备未绑定", data=None)
+
+    await refresh_stale_device_statuses(db, [device])
 
     if device.status != "online":
         return ApiResponse(code=3003, message="设备已离线", data=None)

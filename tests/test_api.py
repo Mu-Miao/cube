@@ -497,6 +497,18 @@ async def test_data_history(client: AsyncClient):
     assert body["code"] == 0
     assert len(body["data"]) == 3
 
+    resp = await client.get(
+        f"/api/v1/data/{device_id}/trend",
+        params={"hours": 1},
+        headers=headers,
+    )
+    assert resp.status_code == 200
+    trend_data = resp.json()["data"]
+    assert sum(item["sample_count"] for item in trend_data) == 3
+    assert [item["timestamp"] for item in trend_data] == sorted(
+        item["timestamp"] for item in trend_data
+    )
+
 
 @pytest.mark.asyncio
 async def test_data_upload_accepts_nested_hardware_payload(client: AsyncClient):
@@ -563,6 +575,12 @@ async def test_data_upload_accepts_nested_hardware_payload(client: AsyncClient):
                     "mqtt_connected": True,
                     "screen_normal": True,
                     "sensor_normal": True,
+                    "light": "on",
+                    "light_brightness": "80",
+                    "color_temperature": 3000,
+                    "wechat_notify": False,
+                    "auto_screen_brightness": True,
+                    "screen_brightness": "60",
                     "focus_mode": True,
                 },
             },
@@ -577,6 +595,12 @@ async def test_data_upload_accepts_nested_hardware_payload(client: AsyncClient):
     assert body["data"]["temperature"] == 26.8
     assert body["data"]["humidity"] == 58.5
     assert body["data"]["pm25"] == 18.6
+    assert body["data"]["light"] is True
+    assert body["data"]["light_brightness"] == 80
+    assert body["data"]["color_temperature"] == 3000
+    assert body["data"]["wechat_notify"] is False
+    assert body["data"]["auto_screen_brightness"] is True
+    assert body["data"]["screen_brightness"] == 60
     assert body["data"]["focus_mode"] is True
     assert body["data"]["wifi_rssi"] is None
 

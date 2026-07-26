@@ -5,7 +5,9 @@
 from datetime import datetime
 from typing import Optional
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
+
+from app.utils.timezone import to_shanghai_time
 
 
 class DeviceHandshake(BaseModel):
@@ -75,6 +77,11 @@ class DeviceItem(BaseModel):
     last_seen: Optional[datetime] = None  # 最后在线时间
     chip_model: Optional[str] = None  # 芯片型号
     firmware_version: Optional[str] = None  # 固件版本
+
+    @field_validator("last_seen", mode="before")
+    @classmethod
+    def last_seen_in_shanghai(cls, value):
+        return to_shanghai_time(value)
 
     class Config:
         from_attributes = True  # 支持从 SQLAlchemy 模型转换

@@ -51,6 +51,18 @@ class SensorData(BaseModel):
     focus_mode: Mapped[bool | None] = mapped_column(
         Integer, nullable=True, default=0
     )
+    # 灯光开关状态（True=开启，False=关闭）
+    light: Mapped[bool | None] = mapped_column(Integer, nullable=True)
+    # 灯光亮度（0-100）
+    light_brightness: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    # 灯光色温（K）
+    color_temperature: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    # 微信通知开关状态（True=开启，False=关闭）
+    wechat_notify: Mapped[bool | None] = mapped_column(Integer, nullable=True)
+    # 自动屏幕亮度状态（True=开启，False=关闭）
+    auto_screen_brightness: Mapped[bool | None] = mapped_column(Integer, nullable=True)
+    # 屏幕亮度（0-100）
+    screen_brightness: Mapped[int | None] = mapped_column(Integer, nullable=True)
 
     # 数据上报时间，由设备上报的 timestamp 字段决定
     # 区别于 created_at（服务器写入时间）

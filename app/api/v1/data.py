@@ -7,7 +7,7 @@ import time
 from datetime import datetime, timedelta, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, Query
-from sqlalchemy import select
+from sqlalchemy import Integer, cast, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import get_current_user
@@ -17,12 +17,26 @@ from app.models.sensor_data import SensorData
 from app.models.user import User
 from app.schemas.base import ApiResponse
 from app.schemas.data import DeviceDataReport, DataUploadAck, SensorDataLatest, SensorDataHistoryItem
-from app.websocket.manager import ws_manager
 from app.services.alert_service import check_alerts
+from app.services.control_status import normalize_control_status
+from app.utils.timezone import shanghai_isoformat
+from app.websocket.manager import ws_manager
 
 router = APIRouter(prefix="/data", tags=["传感器数据"])
 
 DEMO_REFRESH_INTERVAL_SECONDS = 4
+
+
+def _record_control_status(record: SensorData) -> dict:
+    return {
+        "light": bool(record.light) if record.light is not None else None,
+        "light_brightness": record.light_brightness,
+        "color_temperature": record.color_temperature,
+        "wechat_notify": bool(record.wechat_notify) if record.wechat_notify is not None else None,
+        "auto_screen_brightness": bool(record.auto_screen_brightness) if record.auto_screen_brightness is not None else None,
+        "screen_brightness": record.screen_brightness,
+        "focus_mode": bool(record.focus_mode) if record.focus_mode is not None else None,
+    }
 
 
 def _is_live_demo_device(device: Device) -> bool:
@@ -61,6 +75,12 @@ def _build_demo_sensor_record(device_id: str, previous: SensorData | None = None
         gas=gas_value,
         wifi_rssi=round(_jitter(previous.wifi_rssi if previous else None, -46, 2, -68, -34, 0)),
         focus_mode=previous.focus_mode if previous else False,
+        light=previous.light if previous else False,
+        light_brightness=previous.light_brightness if previous else 80,
+        color_temperature=previous.color_temperature if previous else 3000,
+        wechat_notify=previous.wechat_notify if previous else True,
+        auto_screen_brightness=previous.auto_screen_brightness if previous else False,
+        screen_brightness=previous.screen_brightness if previous else 60,
         timestamp=datetime.now(timezone.utc),
     )
 
@@ -78,7 +98,7 @@ async def upload_sensor_data(
     流程：
     1. 验证设备 Token
     2. 将传感器数据写入数据库
-    3. 更新设备在线状态
+    3. 更新固件版本
     4. 通过 WebSocket 推送数据给订阅的前端客户端
 
     注意：此接口不需要 JWT，使用设备 Token 认证
@@ -89,6 +109,8 @@ async def upload_sensor_data(
 
     if not device or device.token != payload.token:
         raise HTTPException(status_code=401, detail="无效的设备凭证")
+
+    control_status = normalize_control_status(payload.status)
 
     # 创建传感器数据记录
     sensor_record = SensorData(
@@ -103,17 +125,22 @@ async def upload_sensor_data(
         mold_risk=payload.data.mold_risk,
         gas=payload.data.gas,
         wifi_rssi=payload.data.wifi_rssi,
-        focus_mode=payload.status.get("focus_mode", False) if payload.status else False,
+        focus_mode=control_status.get("focus_mode"),
+        light=control_status.get("light"),
+        light_brightness=control_status.get("light_brightness"),
+        color_temperature=control_status.get("color_temperature"),
+        wechat_notify=control_status.get("wechat_notify"),
+        auto_screen_brightness=control_status.get("auto_screen_brightness"),
+        screen_brightness=control_status.get("screen_brightness"),
         timestamp=datetime.fromtimestamp(payload.timestamp, tz=timezone.utc),
     )
     db.add(sensor_record)
 
-    # 更新设备在线状态（数据上报也视为心跳）
-    device.status = "online"
-    device.last_seen = datetime.now(timezone.utc)
+    # 在线状态只由握手/心跳维护，避免传感器数据把失联设备顶成在线。
     if payload.data.version:
         device.firmware_version = payload.data.version
 
+    # 先执行 INSERT，再立即推送；请求依赖会在接口正常返回时统一提交事务。
     await db.flush()
 
     # 通过 WebSocket 推送传感器数据给前端
@@ -128,6 +155,8 @@ async def upload_sensor_data(
         "mold_risk": payload.data.mold_risk,
         "gas": payload.data.gas,
         "wifi_rssi": payload.data.wifi_rssi,
+        **control_status,
+        "timestamp": shanghai_isoformat(sensor_record.timestamp),
     })
 
     await check_alerts(payload.device_id, {
@@ -209,8 +238,8 @@ async def get_latest_sensor_data(
             "mold_risk": record.mold_risk,
             "gas": record.gas,
             "wifi_rssi": record.wifi_rssi,
-            "focus_mode": bool(record.focus_mode) if record.focus_mode is not None else None,
-            "timestamp": record.timestamp.isoformat(),
+            **_record_control_status(record),
+            "timestamp": shanghai_isoformat(record.timestamp),
         })
 
     latest_data = SensorDataLatest(
@@ -225,7 +254,7 @@ async def get_latest_sensor_data(
         mold_risk=record.mold_risk,
         gas=record.gas,
         wifi_rssi=record.wifi_rssi,
-        focus_mode=bool(record.focus_mode) if record.focus_mode is not None else None,
+        **_record_control_status(record),
         timestamp=record.timestamp,
     )
     return ApiResponse(data=latest_data)
@@ -295,3 +324,75 @@ async def get_sensor_data_history(
         for r in records
     ]
     return ApiResponse(data=history_list)
+
+
+@router.get("/{device_id}/trend", response_model=ApiResponse[list[SensorDataHistoryItem]])
+async def get_sensor_data_trend(
+    device_id: str,
+    hours: int = Query(default=1, description="趋势范围：1、6、24 或 168 小时"),
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """按时间桶聚合范围内的全部上传数据，供趋势图展示。"""
+    bucket_seconds_by_hours = {
+        1: 60,
+        6: 5 * 60,
+        24: 15 * 60,
+        168: 60 * 60,
+    }
+    bucket_seconds = bucket_seconds_by_hours.get(hours)
+    if bucket_seconds is None:
+        raise HTTPException(status_code=422, detail="hours 仅支持 1、6、24、168")
+
+    device_result = await db.execute(
+        select(Device).where(
+            Device.device_id == device_id,
+            Device.bound_user_id == current_user.id,
+        )
+    )
+    if device_result.scalar_one_or_none() is None:
+        return ApiResponse(code=3002, message="设备未绑定", data=None)
+
+    since = datetime.now(timezone.utc) - timedelta(hours=hours)
+    epoch_seconds = cast(func.strftime("%s", SensorData.timestamp), Integer)
+    bucket = cast(epoch_seconds / bucket_seconds, Integer)
+    data_result = await db.execute(
+        select(
+            func.avg(SensorData.temperature).label("temperature"),
+            func.avg(SensorData.humidity).label("humidity"),
+            func.avg(SensorData.illuminance).label("illuminance"),
+            func.avg(SensorData.aqi).label("aqi"),
+            func.avg(SensorData.pm25).label("pm25"),
+            func.avg(SensorData.tvoc).label("tvoc"),
+            func.avg(SensorData.eco2).label("eco2"),
+            func.avg(SensorData.mold_risk).label("mold_risk"),
+            func.avg(SensorData.gas).label("gas"),
+            cast(func.avg(SensorData.wifi_rssi), Integer).label("wifi_rssi"),
+            func.min(SensorData.timestamp).label("timestamp"),
+            func.count(SensorData.id).label("sample_count"),
+        )
+        .where(
+            SensorData.device_id == device_id,
+            SensorData.timestamp >= since,
+        )
+        .group_by(bucket)
+        .order_by(bucket.asc())
+    )
+
+    return ApiResponse(data=[
+        SensorDataHistoryItem(
+            temperature=row.temperature,
+            humidity=row.humidity,
+            illuminance=row.illuminance,
+            aqi=row.aqi,
+            pm25=row.pm25,
+            tvoc=row.tvoc,
+            eco2=row.eco2,
+            mold_risk=row.mold_risk,
+            gas=row.gas,
+            wifi_rssi=row.wifi_rssi,
+            timestamp=row.timestamp,
+            sample_count=row.sample_count,
+        )
+        for row in data_result.all()
+    ])

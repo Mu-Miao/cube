@@ -78,6 +78,12 @@ async def ensure_demo_schema(db: AsyncSession) -> None:
     await _add_column_if_missing(db, "sensor_data", "gas", "DOUBLE")
     await _add_column_if_missing(db, "sensor_data", "wifi_rssi", "INTEGER")
     await _add_column_if_missing(db, "sensor_data", "focus_mode", "INTEGER")
+    await _add_column_if_missing(db, "sensor_data", "light", "INTEGER")
+    await _add_column_if_missing(db, "sensor_data", "light_brightness", "INTEGER")
+    await _add_column_if_missing(db, "sensor_data", "color_temperature", "INTEGER")
+    await _add_column_if_missing(db, "sensor_data", "wechat_notify", "INTEGER")
+    await _add_column_if_missing(db, "sensor_data", "auto_screen_brightness", "INTEGER")
+    await _add_column_if_missing(db, "sensor_data", "screen_brightness", "INTEGER")
     await db.commit()
 
 

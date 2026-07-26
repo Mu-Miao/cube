@@ -1,6 +1,6 @@
 # 智能桌面魔方 - 后端服务
 
-更新时间：2026-07-26
+更新时间：2026-07-27
 
 基于 FastAPI + SQLAlchemy + MQTT + WebSocket 的 IoT 后端，为智能桌面魔方硬件设备提供设备管理、传感器数据采集、远程控制、告警检测等服务。
 
@@ -10,7 +10,10 @@
 
 - 用户注册、登录、JWT 鉴权、管理员权限校验。
 - 设备握手、心跳、绑定、解绑、列表、重命名。
-- 传感器数据上报、最新数据查询、历史数据查询。
+- 传感器数据上报、最新数据查询、历史数据查询和 1 小时至 7 天的分桶趋势聚合。
+- 设备在线状态由握手与心跳维护，超过心跳超时时间后在查询或控制前刷新为离线。
+- 心跳和数据上报同步灯光、亮度、专注模式等硬件控制状态。
+- API、WebSocket、日志和周报时间统一转换为 Asia/Shanghai（UTC+8）。
 - 远程控制指令下发、设备拉取指令、执行结果 ACK。
 - 操作日志和语音日志查询/记录。
 - 管理员用户管理、设备管理、系统统计。
@@ -25,7 +28,7 @@
 python -m pytest tests/
 ```
 
-测试通过，当前测试覆盖认证、设备、数据、控制、OTA、AI 分析等核心流程。
+当前共 38 项测试通过，覆盖认证、设备、数据、控制、OTA、AI 分析、重复握手 Token 复用、心跳状态同步、超时离线和趋势聚合等核心流程。
 
 ## 技术栈
 
@@ -48,7 +51,7 @@ backend/
 │   │   └── v1/
 │   │       ├── auth.py              # 注册 / 登录
 │   │       ├── device.py            # 握手 / 心跳 / 绑定 / 解绑 / 列表 / 重命名
-│   │       ├── data.py              # 数据上报 / 最新 / 历史
+│   │       ├── data.py              # 数据上报 / 最新 / 历史 / 趋势聚合
 │   │       ├── control.py           # 控制指令下发 / 拉取 / ACK
 │   │       ├── log.py               # 操作日志 / 语音日志 查询与创建
 │   │       ├── admin.py             # 管理员 API（用户/设备管理/统计）
@@ -64,7 +67,8 @@ backend/
 │   ├── schemas/                     # Pydantic 请求/响应模型
 │   ├── services/
 │   │   ├── auth_service.py          # JWT 编解码 / 密码哈希
-│   │   ├── device_service.py        # 设备解绑逻辑
+│   │   ├── device_service.py        # 设备解绑 / 心跳超时离线判定
+│   │   ├── control_status.py        # 硬件控制状态归一化与持久化
 │   │   ├── data_service.py          # 数据查询服务层
 │   │   ├── alert_service.py         # 告警阈值检测
 │   │   ├── cleanup_service.py       # 过期数据清理
@@ -79,7 +83,8 @@ backend/
 │   │   ├── manager.py               # 连接管理 / 消息广播
 │   │   └── handlers.py              # 消息类型分发
 │   ├── utils/
-│   │   └── helpers.py               # 工具函数
+│   │   ├── helpers.py               # 通用工具函数
+│   │   └── timezone.py              # Asia/Shanghai 时间转换
 │   └── db/
 │       └── session.py               # 异步数据库会话
 ├── scripts/
@@ -219,6 +224,7 @@ python -m pytest tests/
 | POST | `/api/v1/data/upload`              | 数据上报（设备侧） |
 | GET  | `/api/v1/data/{device_id}/latest`  | 最新数据      |
 | GET  | `/api/v1/data/{device_id}/history` | 历史数据      |
+| GET  | `/api/v1/data/{device_id}/trend?hours=1` | 分桶趋势数据；`hours` 支持 `1`、`6`、`24`、`168` |
 
 设备数据上报同时兼容两种 JSON 结构：
 
@@ -240,7 +246,13 @@ python -m pytest tests/
     "version": "1.0"
   },
   "status": {
-    "focus_mode": false
+    "focus_mode": false,
+    "light": true,
+    "light_brightness": 70,
+    "color_temperature": 4200,
+    "wechat_notify": true,
+    "auto_screen_brightness": true,
+    "screen_brightness": 60
   }
 }
 ```
@@ -270,13 +282,23 @@ python -m pytest tests/
       "mqtt_connected": true,
       "screen_normal": true,
       "sensor_normal": true,
-      "focus_mode": false
+      "focus_mode": false,
+      "light": true,
+      "light_brightness": 70,
+      "color_temperature": 4200,
+      "wechat_notify": true,
+      "auto_screen_brightness": true,
+      "screen_brightness": 60
     }
   }
 }
 ```
 
 `wifi_rssi` 为可选字段；如果硬件未上报，后端会保存为空。
+
+趋势接口会对时间范围内的全部上报记录分桶求平均值，并返回 `sample_count`。1 小时、6 小时、24 小时和 7 天范围分别使用 1 分钟、5 分钟、15 分钟和 1 小时的时间桶。
+
+在线状态只由设备握手和心跳刷新；普通传感器数据上报不会把已失联设备重新标记为在线。Demo 设备不参与心跳超时离线判定。
 
 ### 设备控制
 
@@ -379,6 +401,7 @@ VITE_WS_BASE_URL=
 | `DATABASE_URL`        | `sqlite+aiosqlite:///./data/cube.db` | 数据库连接        |
 | `MQTT_BROKER_URL`     | `broker.emqx.io`                     | MQTT Broker  |
 | `MQTT_BROKER_PORT`    | `1883`                               | MQTT 端口      |
+| `DEVICE_HEARTBEAT_TIMEOUT_SECONDS` | `90`                    | 设备心跳超时判定秒数 |
 | `DATA_RETENTION_DAYS` | `30`                                 | 数据保留天数       |
 | `TTS_API_URL`         | 空                                    | 语音合成 API，正在开发中，非 MVP |
 | `WEATHER_API_URL`     | 空                                    | 天气 API，正在开发中，非 MVP |

@@ -12,6 +12,7 @@ from app.models.device import Device
 from app.models.sensor_data import SensorData
 from app.models.user import User
 from app.schemas.base import ApiResponse
+from app.utils.timezone import shanghai_isoformat, to_shanghai_time
 from app.services import llm_service
 
 router = APIRouter(prefix="/ai", tags=["AI 分析"])
@@ -53,7 +54,7 @@ def _sensor_snapshot(record: SensorData | None) -> dict:
         "mold_risk": record.mold_risk,
         "gas": record.gas,
         "wifi_rssi": record.wifi_rssi,
-        "timestamp": record.timestamp.isoformat() if record.timestamp else None,
+        "timestamp": shanghai_isoformat(record.timestamp),
     }
 
 
@@ -303,7 +304,9 @@ def _build_suggestions(record: SensorData | None):
 def _build_weekly_days(records: list[SensorData]) -> list[dict]:
     grouped = defaultdict(list)
     for record in records:
-        grouped[record.timestamp.date().isoformat()].append(record)
+        shanghai_timestamp = to_shanghai_time(record.timestamp)
+        if shanghai_timestamp:
+            grouped[shanghai_timestamp.date().isoformat()].append(record)
 
     days = []
     for day, items in sorted(grouped.items()):

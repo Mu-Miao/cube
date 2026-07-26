@@ -19,6 +19,7 @@ from app.models.device import Device
 from app.models.sensor_data import SensorData
 from app.models.user import User
 from app.services import llm_service
+from app.utils.timezone import format_shanghai_time
 
 logger = logging.getLogger(__name__)
 
@@ -139,10 +140,10 @@ async def _build_device_context(user_id: int, device_id: Optional[str], db: Asyn
     if device.firmware_version:
         lines.append(f"固件版本：{device.firmware_version}")
     if device.last_seen:
-        lines.append(f"最后在线：{device.last_seen.strftime('%Y-%m-%d %H:%M:%S')}")
+        lines.append(f"最后在线：{format_shanghai_time(device.last_seen)}")
 
     if sensor:
-        lines.append(f"数据时间：{sensor.timestamp.strftime('%Y-%m-%d %H:%M:%S')}")
+        lines.append(f"数据时间：{format_shanghai_time(sensor.timestamp)}")
         lines.append("传感器读数：")
 
         for field, (label, unit, warn, crit) in SENSOR_LABELS.items():

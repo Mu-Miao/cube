@@ -1,7 +1,9 @@
 from datetime import datetime
 from typing import Optional
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
+
+from app.utils.timezone import to_shanghai_time
 
 
 class OperationLogItem(BaseModel):
@@ -12,6 +14,11 @@ class OperationLogItem(BaseModel):
     detail: Optional[str] = None
     ip_address: Optional[str] = None
     created_at: Optional[datetime] = None
+
+    @field_validator("created_at", mode="before")
+    @classmethod
+    def created_at_in_shanghai(cls, value):
+        return to_shanghai_time(value)
 
     class Config:
         from_attributes = True
@@ -35,6 +42,11 @@ class VoiceLogItem(BaseModel):
     executed: bool = False
     response_text: Optional[str] = None
     created_at: Optional[datetime] = None
+
+    @field_validator("created_at", mode="before")
+    @classmethod
+    def created_at_in_shanghai(cls, value):
+        return to_shanghai_time(value)
 
     class Config:
         from_attributes = True

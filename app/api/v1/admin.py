@@ -8,6 +8,8 @@ from app.models.device import Device
 from app.models.user import User
 from app.models.sensor_data import SensorData
 from app.schemas.base import ApiResponse
+from app.services.device_service import refresh_stale_device_statuses
+from app.utils.timezone import shanghai_isoformat
 
 router = APIRouter(prefix="/admin", tags=["管理员"])
 
@@ -27,7 +29,7 @@ async def list_all_users(
             "email": u.email,
             "role": u.role,
             "is_active": u.is_active,
-            "created_at": u.created_at.isoformat() if u.created_at else None,
+            "created_at": shanghai_isoformat(u.created_at),
         }
         for u in users
     ]
@@ -62,6 +64,7 @@ async def list_all_devices(
     """获取所有设备列表"""
     result = await db.execute(select(Device).order_by(Device.id))
     devices = result.scalars().all()
+    await refresh_stale_device_statuses(db, devices)
     device_list = [
         {
             "id": d.id,
@@ -71,7 +74,7 @@ async def list_all_devices(
             "bound_user_id": d.bound_user_id,
             "chip_model": d.chip_model,
             "firmware_version": d.firmware_version,
-            "last_seen": d.last_seen.isoformat() if d.last_seen else None,
+            "last_seen": shanghai_isoformat(d.last_seen),
         }
         for d in devices
     ]

@@ -2,10 +2,52 @@
 # 设备服务
 # 处理设备绑定、解绑等业务逻辑
 
+from datetime import datetime, timedelta, timezone
+
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.config import settings
 from app.models.device import Device
+
+
+def _normalize_datetime(value):
+    if value is None:
+        return None
+    if value.tzinfo is None:
+        return value.replace(tzinfo=timezone.utc)
+    return value.astimezone(timezone.utc)
+
+
+def is_device_stale(device: Device, now: datetime | None = None) -> bool:
+    if device.status != "online":
+        return False
+
+    if device.device_id.startswith("DEMO-CUBE-"):
+        return False
+
+    last_seen = _normalize_datetime(device.last_seen)
+    if last_seen is None:
+        return True
+
+    now = now or datetime.now(timezone.utc)
+    timeout = timedelta(seconds=settings.DEVICE_HEARTBEAT_TIMEOUT_SECONDS)
+    return last_seen < now - timeout
+
+
+async def refresh_stale_device_statuses(db: AsyncSession, devices: list[Device]) -> int:
+    stale_count = 0
+    now = datetime.now(timezone.utc)
+
+    for device in devices:
+        if is_device_stale(device, now):
+            device.status = "offline"
+            stale_count += 1
+
+    if stale_count:
+        await db.flush()
+
+    return stale_count
 
 
 async def unbind_device(db: AsyncSession, device_id: str, user_id: int) -> tuple[int, str]:

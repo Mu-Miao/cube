@@ -19,7 +19,9 @@ from app.schemas.device import (
     DeviceHandshake, DeviceHandshakeAck, DeviceHeartbeat,
     DeviceBind, DeviceUnbind, DeviceItem,
 )
-from app.services.device_service import unbind_device
+from app.services.control_status import persist_latest_control_status
+from app.services.device_service import refresh_stale_device_statuses, unbind_device
+from app.websocket.manager import ws_manager
 
 router = APIRouter(prefix="/device", tags=["设备管理"])
 
@@ -40,7 +42,7 @@ async def device_handshake(payload: DeviceHandshake, db: AsyncSession = Depends(
     1. 查找设备是否已存在
     2. 若不存在则创建设备记录
     3. 若已存在则更新芯片型号和固件版本
-    4. 生成新的设备 Token 并返回
+    4. 首次握手生成设备 Token，重复握手复用已有 Token
     """
     # 查询设备是否已存在
     result = await db.execute(select(Device).where(Device.device_id == payload.device_id))
@@ -59,8 +61,8 @@ async def device_handshake(payload: DeviceHandshake, db: AsyncSession = Depends(
         device.chip_model = payload.chip_model
         device.firmware_version = payload.version
 
-    # 生成设备 Token（格式：dev_随机32位十六进制）
-    device_token = f"dev_{secrets.token_hex(16)}"
+    # 重复握手复用已有 Token，避免并发或在途上报被新 Token 拒绝。
+    device_token = device.token or f"dev_{secrets.token_hex(16)}"
     device.token = device_token
     device.status = "online"
     device.last_seen = datetime.now(timezone.utc)
@@ -95,7 +97,15 @@ async def device_heartbeat(payload: DeviceHeartbeat, db: AsyncSession = Depends(
     # 更新设备在线状态和最后在线时间
     device.status = "online"
     device.last_seen = datetime.now(timezone.utc)
+    control_status = await persist_latest_control_status(
+        db,
+        payload.device_id,
+        payload.status,
+    )
     await db.flush()
+
+    if control_status:
+        await ws_manager.broadcast_device_heartbeat(payload.device_id, control_status)
 
     return {
         "code": 200,
@@ -159,6 +169,7 @@ async def list_devices(
         select(Device).where(Device.bound_user_id == current_user.id)
     )
     devices = result.scalars().all()
+    await refresh_stale_device_statuses(db, devices)
 
     device_list = [
         DeviceItem(

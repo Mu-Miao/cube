@@ -18,8 +18,10 @@ from app.models.ota_log import OtaLog
 from app.models.sensor_data import SensorData
 from app.mqtt.client import mqtt_client
 from app.mqtt.topics import get_status_topic, get_data_topic
-from app.websocket.manager import ws_manager
 from app.services.alert_service import check_alerts
+from app.services.control_status import normalize_control_status, persist_latest_control_status
+from app.utils.timezone import shanghai_isoformat
+from app.websocket.manager import ws_manager
 
 
 def _normalize_pm25_key(sensor_data: dict) -> dict:
@@ -91,9 +93,9 @@ async def _handle_handshake(device_id: str, data: dict) -> None:
             device.chip_model = data.get("chip_model")
             device.firmware_version = data.get("version")
 
-        # 生成设备 Token
+        # 重复握手复用已有 Token，避免 ACK 到达前的在途数据被新 Token 拒绝。
         import secrets
-        device_token = f"dev_{secrets.token_hex(16)}"
+        device_token = device.token or f"dev_{secrets.token_hex(16)}"
         device.token = device_token
         device.status = "online"
         device.last_seen = datetime.now(timezone.utc)
@@ -146,6 +148,11 @@ async def _handle_heartbeat(device_id: str, data: dict) -> None:
 
         device.status = "online"
         device.last_seen = datetime.now(timezone.utc)
+        heartbeat_status = await persist_latest_control_status(
+            db,
+            device_id,
+            data.get("status"),
+        )
         await db.commit()
         logger.info("设备心跳成功: device_id={}", device_id)
 
@@ -159,7 +166,6 @@ async def _handle_heartbeat(device_id: str, data: dict) -> None:
     await mqtt_client.publish(get_status_topic(device_id), ack_payload.encode())
 
     # 广播设备心跳状态给前端（wifi / mqtt / screen / sensor 状态）
-    heartbeat_status = data.get("status", {})
     if heartbeat_status:
         await ws_manager.broadcast_device_heartbeat(device_id, heartbeat_status)
 
@@ -217,6 +223,8 @@ async def _handle_data_report(device_id: str, data: dict) -> None:
             await mqtt_client.publish(get_data_topic(device_id), ack_payload.encode())
             return
 
+        control_status = normalize_control_status(status_data)
+
         # 创建传感器数据记录
         record = SensorData(
             device_id=device_id,
@@ -230,14 +238,18 @@ async def _handle_data_report(device_id: str, data: dict) -> None:
             mold_risk=sensor_data.get("mold_risk"),
             gas=sensor_data.get("gas"),
             wifi_rssi=sensor_data.get("wifi_rssi"),
-            focus_mode=status_data.get("focus_mode", False),
+            focus_mode=control_status.get("focus_mode"),
+            light=control_status.get("light"),
+            light_brightness=control_status.get("light_brightness"),
+            color_temperature=control_status.get("color_temperature"),
+            wechat_notify=control_status.get("wechat_notify"),
+            auto_screen_brightness=control_status.get("auto_screen_brightness"),
+            screen_brightness=control_status.get("screen_brightness"),
             timestamp=datetime.fromtimestamp(data.get("timestamp", time.time()), tz=timezone.utc),
         )
         db.add(record)
 
-        # 更新设备状态和固件版本
-        device.status = "online"
-        device.last_seen = datetime.now(timezone.utc)
+        # 在线状态只由握手/心跳维护，避免传感器数据把失联设备顶成在线。
         if sensor_data.get("version"):
             device.firmware_version = sensor_data.get("version")
 
@@ -251,6 +263,13 @@ async def _handle_data_report(device_id: str, data: dict) -> None:
             sensor_data.get("eco2"),
         )
 
+    # 数据库提交后立即推送给前端，不等待 MQTT ACK 的网络往返。
+    await ws_manager.broadcast_sensor_data(device_id, {
+        **sensor_data,
+        **control_status,
+        "timestamp": shanghai_isoformat(record.timestamp),
+    })
+
     # 回复 data_report_ack（协议: 数据接收响应协议.json）
     ack_payload = json.dumps({
         "code": 200,
@@ -260,9 +279,6 @@ async def _handle_data_report(device_id: str, data: dict) -> None:
         "receive_status": True,
     })
     await mqtt_client.publish(get_data_topic(device_id), ack_payload.encode())
-
-    # 通过 WebSocket 推送传感器数据给前端
-    await ws_manager.broadcast_sensor_data(device_id, sensor_data)
 
     await check_alerts(device_id, {
         "gas": sensor_data.get("gas"),

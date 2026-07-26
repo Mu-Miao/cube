@@ -83,3 +83,14 @@ async def init_db():
             column_names = {row[1] for row in columns}
             if "pm25" not in column_names:
                 await conn.execute(text("ALTER TABLE sensor_data ADD COLUMN pm25 DOUBLE"))
+            control_columns = {
+                "light": "INTEGER",
+                "light_brightness": "INTEGER",
+                "color_temperature": "INTEGER",
+                "wechat_notify": "INTEGER",
+                "auto_screen_brightness": "INTEGER",
+                "screen_brightness": "INTEGER",
+            }
+            for column_name, column_type in control_columns.items():
+                if column_name not in column_names:
+                    await conn.execute(text(f"ALTER TABLE sensor_data ADD COLUMN {column_name} {column_type}"))

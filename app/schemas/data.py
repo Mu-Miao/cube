@@ -5,7 +5,9 @@
 from datetime import datetime
 from typing import Optional
 
-from pydantic import BaseModel, Field, model_validator
+from pydantic import BaseModel, Field, field_validator, model_validator
+
+from app.utils.timezone import to_shanghai_time
 
 
 class SensorDataPayload(BaseModel):
@@ -94,6 +96,12 @@ class SensorDataHistoryItem(BaseModel):
     gas: Optional[float] = None
     wifi_rssi: Optional[int] = None
     timestamp: Optional[datetime] = None
+    sample_count: Optional[int] = None
+
+    @field_validator("timestamp", mode="before")
+    @classmethod
+    def timestamp_in_shanghai(cls, value):
+        return to_shanghai_time(value)
 
     class Config:
         from_attributes = True
@@ -115,8 +123,19 @@ class SensorDataLatest(BaseModel):
     mold_risk: Optional[float] = None
     gas: Optional[float] = None
     wifi_rssi: Optional[int] = None
+    light: Optional[bool] = None
+    light_brightness: Optional[int] = None
+    color_temperature: Optional[int] = None
+    wechat_notify: Optional[bool] = None
+    auto_screen_brightness: Optional[bool] = None
+    screen_brightness: Optional[int] = None
     focus_mode: Optional[bool] = None
     timestamp: Optional[datetime] = None
+
+    @field_validator("timestamp", mode="before")
+    @classmethod
+    def timestamp_in_shanghai(cls, value):
+        return to_shanghai_time(value)
 
     class Config:
         from_attributes = True
