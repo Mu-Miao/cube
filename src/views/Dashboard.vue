@@ -105,7 +105,7 @@
               v-model="controlState.focus"
               label="专注模式"
               :disabled="controlModeDevice.status !== 'online'"
-              @update:model-value="(val: boolean) => handleControl('focus', val)"
+              @update:model-value="(val: boolean) => handleControl('focus_mode', val)"
             />
             <div class="dashboard-control-metrics">
               <div>
@@ -298,7 +298,7 @@
               v-model="controlState.focus"
               label="专注模式"
               :disabled="!selectedDevice || selectedDevice.status !== 'online'"
-              @update:model-value="(val: boolean) => handleControl('focus', val)"
+              @update:model-value="(val: boolean) => handleControl('focus_mode', val)"
             />
           </div>
         </div>
@@ -394,15 +394,16 @@
 <script setup lang="ts">
 import { ref, reactive, computed, defineAsyncComponent, onMounted, onUnmounted, watch, nextTick } from 'vue'
 import { ElMessage } from 'element-plus/es/components/message/index.mjs'
-import type { ECharts, EChartsOption } from 'echarts'
+import type { EChartsType } from 'echarts/core'
 import DeviceOverviewCard from '@/components/DeviceOverviewCard.vue'
 import SensorCard from '@/components/SensorCard.vue'
 import SensorMiniCard from '@/components/SensorMiniCard.vue'
 import ControlToggle from '@/components/ControlToggle.vue'
 import GasAlertBanner from '@/components/GasAlertBanner.vue'
-import { getDeviceList, bindDevice, getLatestData, sendControlCommand } from '@/api/device'
+import { getDeviceList, bindDevice, getLatestData, getTrendData, sendControlCommand, type SensorData } from '@/api/device'
 import { useWebSocket } from '@/composables/useWebSocket'
 import { useDeviceStore } from '@/store/device'
+import { BEIJING_TIME_ZONE } from '@/utils/format'
 
 const MascotCompanion = defineAsyncComponent(() => import('@/components/brand/MascotCompanion.vue'))
 const MineradioParticleStage = defineAsyncComponent(() => import('@/components/brand/MineradioParticleStage.vue'))
@@ -420,10 +421,11 @@ const deviceStore = useDeviceStore()
 const showBindDialog = ref(false)
 const bindLoading = ref(false)
 const chartRef = ref<HTMLElement>()
-type EchartsModule = typeof import('echarts')
+type EchartsModule = typeof import('@/utils/slimEcharts')
 let echartsModule: EchartsModule | null = null
 let echartsLoadPromise: Promise<EchartsModule> | null = null
-let chart: ECharts | null = null
+type EChartsOption = Parameters<EChartsType['setOption']>[0]
+let chart: EChartsType | null = null
 
 const selectedDeviceId = ref('')
 const launchingDeviceId = ref('')
@@ -441,6 +443,7 @@ const twinFlightLabel = ref('Twin Model')
 const twinFlightOffline = ref(false)
 const twinFlightCleanupTimer = 0
 let sensorPollingTimer = 0
+let trendRefreshTimer = 0
 
 const airLegend = [
   { label: 'O2', name: '氧气', color: '#a3e635' },
@@ -488,19 +491,33 @@ const controlState = reactive({
   focus: false,
 })
 
+function applyHardwareControlState(data: Partial<SensorData> | Record<string, unknown> | null | undefined) {
+  if (!data) return
+  if (typeof data.light === 'boolean') controlState.light = data.light
+  if (typeof data.wechat_notify === 'boolean') controlState.wechatNotify = data.wechat_notify
+  if (typeof data.focus_mode === 'boolean') controlState.focus = data.focus_mode
+}
+
 // 时间范围配置
-const timeRanges = [
-  { key: '1H', label: '1H' },
-  { key: '6H', label: '6H' },
-  { key: '24H', label: '24H' },
-  { key: '7D', label: '7D' },
+type TimeRangeKey = '1H' | '6H' | '24H' | '7D'
+
+const timeRanges: Array<{ key: TimeRangeKey; label: string; hours: 1 | 6 | 24 | 168 }> = [
+  { key: '1H', label: '1H', hours: 1 },
+  { key: '6H', label: '6H', hours: 6 },
+  { key: '24H', label: '24H', hours: 24 },
+  { key: '7D', label: '7D', hours: 168 },
 ]
-const activeTimeRange = ref('1H')
+const activeTimeRange = ref<TimeRangeKey>('1H')
+let trendRequestId = 0
 
 // ECharts 趋势数据
 const chartTimeData = ref<string[]>([])
-const chartTempData = ref<number[]>([])
-const chartHumidityData = ref<number[]>([])
+const chartTempData = ref<Array<number | null>>([])
+const chartHumidityData = ref<Array<number | null>>([])
+const chartAqiData = ref<Array<number | null>>([])
+const chartPm25Data = ref<Array<number | null>>([])
+const chartTvocData = ref<Array<number | null>>([])
+const chartEco2Data = ref<Array<number | null>>([])
 
 // 设备温湿度缓存（用于设备概览卡片显示）
 const deviceDataCache = reactive<
@@ -643,7 +660,11 @@ const airParticleData = computed(() => ({
 // ============================================================
 
 function formatRelativeTime(): string {
-  return new Date().toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' })
+  return new Date().toLocaleTimeString('zh-CN', {
+    hour: '2-digit',
+    minute: '2-digit',
+    timeZone: BEIJING_TIME_ZONE,
+  })
 }
 
 function getDeviceTemp(deviceId: string): number | null {
@@ -710,6 +731,7 @@ async function fetchDevices() {
   try {
     const list = await getDeviceList()
     deviceStore.setDevices(list)
+    subscribeDevices(list)
 
     // 默认选中第一个在线设备
     if (!selectedDeviceId.value && list.length > 0) {
@@ -725,6 +747,14 @@ async function fetchDevices() {
   } catch {
     ElMessage.error('获取设备列表失败')
   }
+}
+
+function subscribeDevices(devices = deviceStore.devices) {
+  devices.forEach((device) => {
+    if (device.device_id) {
+      ws.send('subscribe', { device_id: device.device_id })
+    }
+  })
 }
 
 async function fetchDeviceCardData(devices = deviceStore.devices) {
@@ -754,6 +784,7 @@ async function fetchLatestData(deviceId: string, showError = false) {
     const data = await getLatestData(deviceId)
     if (data) {
       Object.assign(sensorData, data)
+      applyHardwareControlState(data)
 
       // 更新设备数据缓存
       if (!deviceDataCache[deviceId]) {
@@ -764,8 +795,6 @@ async function fetchLatestData(deviceId: string, showError = false) {
 
       // 更新趋势数据
       pushTrendData()
-      // 更新图表
-      updateChart()
       return true
     }
     if (showError) ElMessage.warning('该设备暂无最新数据')
@@ -798,16 +827,17 @@ function pushTrendData() {
 // ============================================================
 
 async function loadEcharts() {
-  echartsLoadPromise ??= import('echarts')
+  echartsLoadPromise ??= import('@/utils/slimEcharts')
   echartsModule = await echartsLoadPromise
   return echartsModule
 }
 
 async function initChart() {
   if (!chartRef.value) return
-  const echarts = await loadEcharts()
+  const { echarts } = await loadEcharts()
   if (!chartRef.value || chart) return
-  chart = echarts.init(chartRef.value)
+  const activeChart = echarts.init(chartRef.value)
+  chart = activeChart
 
   const option: EChartsOption = {
     backgroundColor: 'transparent',
@@ -818,14 +848,19 @@ async function initChart() {
       textStyle: { color: '#e8ecf4' },
     },
     legend: {
-      data: ['温度', '湿度'],
+      type: 'scroll',
+      data: ['温度', '湿度', 'AQI', 'PM2.5', 'TVOC', 'eCO2'],
       textStyle: { color: '#8b95b0' },
       top: 0,
+      left: 0,
       right: 0,
+      pageTextStyle: { color: '#8b95b0' },
+      pageIconColor: '#38bdf8',
+      pageIconInactiveColor: '#475569',
     },
     grid: {
       left: '3%',
-      right: '4%',
+      right: 110,
       bottom: '3%',
       top: 40,
       containLabel: true,
@@ -837,12 +872,29 @@ async function initChart() {
       axisLine: { lineStyle: { color: 'rgba(51, 65, 102, 0.45)' } },
       axisLabel: { color: '#8b95b0' },
     },
-    yAxis: {
-      type: 'value',
-      axisLine: { lineStyle: { color: 'rgba(51, 65, 102, 0.45)' } },
-      axisLabel: { color: '#8b95b0' },
-      splitLine: { lineStyle: { color: 'rgba(51, 65, 102, 0.25)' } },
-    },
+    yAxis: [
+      {
+        type: 'value',
+        axisLine: { show: true, lineStyle: { color: 'rgba(51, 65, 102, 0.45)' } },
+        axisLabel: { color: '#8b95b0' },
+        splitLine: { lineStyle: { color: 'rgba(51, 65, 102, 0.25)' } },
+      },
+      {
+        type: 'value',
+        position: 'right',
+        axisLine: { show: true, lineStyle: { color: '#FBBF24' } },
+        axisLabel: { color: '#FBBF24' },
+        splitLine: { show: false },
+      },
+      {
+        type: 'value',
+        position: 'right',
+        offset: 54,
+        axisLine: { show: true, lineStyle: { color: '#A78BFA' } },
+        axisLabel: { color: '#A78BFA' },
+        splitLine: { show: false },
+      },
+    ],
     series: [
       {
         name: '温度',
@@ -876,51 +928,142 @@ async function initChart() {
         },
         animationDuration: 800,
       },
+      {
+        name: 'AQI',
+        type: 'line',
+        data: [],
+        smooth: true,
+        symbol: 'none',
+        lineStyle: { color: '#22C55E', width: 2 },
+        itemStyle: { color: '#22C55E' },
+        animationDuration: 800,
+      },
+      {
+        name: 'PM2.5',
+        type: 'line',
+        yAxisIndex: 1,
+        data: [],
+        smooth: true,
+        symbol: 'none',
+        lineStyle: { color: '#94A3B8', width: 2 },
+        itemStyle: { color: '#94A3B8' },
+        animationDuration: 800,
+      },
+      {
+        name: 'TVOC',
+        type: 'line',
+        yAxisIndex: 1,
+        data: [],
+        smooth: true,
+        symbol: 'none',
+        lineStyle: { color: '#FBBF24', width: 2 },
+        itemStyle: { color: '#FBBF24' },
+        animationDuration: 800,
+      },
+      {
+        name: 'eCO2',
+        type: 'line',
+        yAxisIndex: 2,
+        data: [],
+        smooth: true,
+        symbol: 'none',
+        lineStyle: { color: '#A78BFA', width: 2 },
+        itemStyle: { color: '#A78BFA' },
+        animationDuration: 800,
+      },
     ],
   }
 
-  chart.setOption(option)
+  activeChart.setOption(option)
 }
 
-function updateChart() {
+function renderTrendChart() {
   if (!chart) return
-  const now = new Date()
-  const timeStr = now.toLocaleTimeString('zh-CN', {
-    hour: '2-digit',
-    minute: '2-digit',
-    second: '2-digit',
-  })
-
-  chartTimeData.value.push(timeStr)
-  chartTempData.value.push(sensorData.temperature)
-  chartHumidityData.value.push(sensorData.humidity)
-
-  // 最多保留 60 个数据点
-  const maxPoints = 60
-  if (chartTimeData.value.length > maxPoints) {
-    chartTimeData.value.shift()
-    chartTempData.value.shift()
-    chartHumidityData.value.shift()
-  }
-
   chart.setOption({
     xAxis: { data: chartTimeData.value },
-    series: [{ data: chartTempData.value }, { data: chartHumidityData.value }],
+    series: [
+      { data: chartTempData.value },
+      { data: chartHumidityData.value },
+      { data: chartAqiData.value },
+      { data: chartPm25Data.value },
+      { data: chartTvocData.value },
+      { data: chartEco2Data.value },
+    ],
   })
 }
 
-function switchTimeRange(range: string) {
-  activeTimeRange.value = range
-  // 清空图表数据，重新拉取（简化实现：清空后等待新数据填充）
-  chartTimeData.value = []
-  chartTempData.value = []
-  chartHumidityData.value = []
-  if (chart) {
-    chart.setOption({
-      xAxis: { data: [] },
-      series: [{ data: [] }, { data: [] }],
+function formatTrendTime(timestamp: string | null) {
+  if (!timestamp) return '--'
+  const date = new Date(timestamp)
+  if (Number.isNaN(date.getTime())) return '--'
+
+  if (activeTimeRange.value === '7D') {
+    return date.toLocaleString('zh-CN', {
+      month: '2-digit',
+      day: '2-digit',
+      hour: '2-digit',
+      minute: '2-digit',
+      hour12: false,
+      timeZone: BEIJING_TIME_ZONE,
     })
   }
+
+  return date.toLocaleTimeString('zh-CN', {
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: false,
+    timeZone: BEIJING_TIME_ZONE,
+  })
+}
+
+async function loadTrendData(
+  deviceId = selectedDeviceId.value,
+  range = activeTimeRange.value,
+) {
+  const requestId = ++trendRequestId
+  if (!deviceId) {
+    chartTimeData.value = []
+    chartTempData.value = []
+    chartHumidityData.value = []
+    chartAqiData.value = []
+    chartPm25Data.value = []
+    chartTvocData.value = []
+    chartEco2Data.value = []
+    renderTrendChart()
+    return
+  }
+
+  const rangeConfig = timeRanges.find((item) => item.key === range)
+  if (!rangeConfig) return
+
+  try {
+    const records = await getTrendData(deviceId, rangeConfig.hours)
+    if (
+      requestId !== trendRequestId ||
+      deviceId !== selectedDeviceId.value ||
+      range !== activeTimeRange.value
+    ) {
+      return
+    }
+
+    chartTimeData.value = records.map((item) => formatTrendTime(item.timestamp))
+    chartTempData.value = records.map((item) => item.temperature)
+    chartHumidityData.value = records.map((item) => item.humidity)
+    chartAqiData.value = records.map((item) => item.aqi)
+    chartPm25Data.value = records.map((item) => item.pm25)
+    chartTvocData.value = records.map((item) => item.tvoc)
+    chartEco2Data.value = records.map((item) => item.eco2)
+    renderTrendChart()
+  } catch {
+    if (requestId === trendRequestId) {
+      ElMessage.error('趋势数据加载失败')
+    }
+  }
+}
+
+function switchTimeRange(range: TimeRangeKey) {
+  activeTimeRange.value = range
+  void loadTrendData(selectedDeviceId.value, range)
 }
 
 // ============================================================
@@ -1135,7 +1278,7 @@ async function leaveInlineControl() {
   await nextTick()
   await waitForPaintFrames(1)
   await initChart()
-  updateChart()
+  await loadTrendData()
 }
 
 async function handleControl(command: string, value: boolean) {
@@ -1153,7 +1296,7 @@ async function handleControl(command: string, value: boolean) {
     // 恢复开关状态
     if (command === 'light') controlState.light = !value
     if (command === 'wechat_notify') controlState.wechatNotify = !value
-    if (command === 'focus') controlState.focus = !value
+    if (command === 'focus_mode') controlState.focus = !value
   }
 }
 
@@ -1195,25 +1338,27 @@ const ws = useWebSocket('/ws')
 watch(selectedDeviceId, (newId) => {
   if (newId && refreshingDeviceId.value !== newId) {
     fetchLatestData(newId)
+    void loadTrendData(newId)
   }
 })
 
 onMounted(() => {
   fetchDevices()
   nextTick(() => {
-    void initChart()
+    void initChart().then(() => loadTrendData())
   })
 
-  // 建立 WebSocket 连接
-  ws.connect()
+  ws.on('auth_result', () => {
+    subscribeDevices()
+  })
 
   // 订阅传感器数据推送
   ws.on('sensor_data', (data: Record<string, unknown>) => {
     const deviceId = data.device_id as string
     if (deviceId === selectedDeviceId.value) {
       Object.assign(sensorData, data)
+      applyHardwareControlState(data)
       pushTrendData()
-      updateChart()
     }
 
     // 更新设备数据缓存（无论是否选中）
@@ -1224,10 +1369,19 @@ onMounted(() => {
     deviceDataCache[deviceId].humidity = (data.humidity as number) ?? null
   })
 
+  ws.on('device_heartbeat', (data: Record<string, unknown>) => {
+    if (data.device_id === selectedDeviceId.value) {
+      applyHardwareControlState(data)
+    }
+  })
+
   // 订阅设备状态变更
   ws.on('device_status', () => {
     fetchDevices()
   })
+
+  // 建立 WebSocket 连接
+  ws.connect()
 
   sensorPollingTimer = window.setInterval(() => {
     if (selectedDeviceId.value && !refreshingDeviceId.value) {
@@ -1235,11 +1389,15 @@ onMounted(() => {
       fetchDeviceCardData()
     }
   }, 5000)
+  trendRefreshTimer = window.setInterval(() => {
+    void loadTrendData()
+  }, 60000)
 })
 
 onUnmounted(() => {
   window.clearTimeout(twinFlightCleanupTimer)
   window.clearInterval(sensorPollingTimer)
+  window.clearInterval(trendRefreshTimer)
   setNavigationHighlight(null)
   ws.disconnect()
   if (chart) {

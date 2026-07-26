@@ -59,7 +59,7 @@ interface HardwareScreenData {
   pm25?: number | null
   tvoc?: number | null
   eco2?: number | null
-  timestamp?: string | null
+  timestamp?: string | number | null
 }
 
 const props = withDefaults(
@@ -75,11 +75,23 @@ const props = withDefaults(
   },
 )
 
-const hasData = computed(() => Boolean(props.data?.timestamp))
-
 function getNumeric(value: number | null | undefined) {
   return typeof value === 'number' && Number.isFinite(value) ? value : null
 }
+
+const hasData = computed(() => {
+  if (!props.data) return false
+
+  return [
+    props.data.temperature,
+    props.data.humidity,
+    props.data.illuminance,
+    props.data.aqi,
+    props.data.pm25,
+    props.data.tvoc,
+    props.data.eco2,
+  ].some((value) => getNumeric(value) !== null)
+})
 
 function metricValue(value: number | null | undefined, suffix = '', digits = 0) {
   const numeric = getNumeric(value)

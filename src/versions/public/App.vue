@@ -447,6 +447,8 @@ import DeviceRow from '@/versions/public/components/DeviceRow.vue'
 import LiquidGlass from '@/versions/public/components/LiquidGlass.vue'
 import ProductCube from '@/versions/public/components/ProductCube.vue'
 import VersionSwitcher from '@/components/VersionSwitcher.vue'
+import { useWebSocket } from '@/composables/useWebSocket'
+import { BEIJING_TIME_ZONE } from '@/utils/format'
 import type { Device as DeviceView, Insight } from '@/versions/public/data/mockData'
 
 const AuroraField = defineAsyncComponent(() => import('@/versions/public/components/AuroraField.vue'))
@@ -494,7 +496,7 @@ const lightEnabled = ref(true)
 const notifyEnabled = ref(true)
 const focusEnabled = ref(false)
 const focusMode = ref('关闭')
-const focusModes = ['关闭', '专注', '深度专注']
+const focusModes = ['关闭', '专注']
 const isSignedIn = ref(Boolean(getToken()))
 const isMobileViewport = ref(false)
 const isTouchDevice = ref(false)
@@ -514,6 +516,7 @@ const aiMode = ref<AiMode>('rule')
 const statusMessage = ref('')
 const errorMessage = ref('')
 let noticeTimer: ReturnType<typeof window.setTimeout> | undefined
+const ws = useWebSocket('/ws')
 const selectedDeviceId = ref(localStorage.getItem('selectedDeviceId') || '')
 const rawDevices = ref<DeviceInfo[]>([])
 const sensorMap = ref<Record<string, SensorData | null>>({})
@@ -581,6 +584,7 @@ const todayText = new Intl.DateTimeFormat('zh-CN', {
   month: 'long',
   day: 'numeric',
   weekday: 'long',
+  timeZone: BEIJING_TIME_ZONE,
 }).format(new Date())
 
 const emptyDevice: DeviceView = {
@@ -837,6 +841,7 @@ async function handleAuth() {
     setToken(result.access_token)
     localStorage.setItem('username', authForm.username)
     isSignedIn.value = true
+    ws.connect()
     await refreshAll()
   } catch (error) {
     authMessage.value = getErrorMessage(error, '登录失败，请检查后端服务')
@@ -846,6 +851,7 @@ async function handleAuth() {
 }
 
 function signOut() {
+  ws.disconnect()
   clearToken()
   isSignedIn.value = false
   rawDevices.value = []
@@ -873,6 +879,7 @@ async function refreshAll() {
 async function loadDevices() {
   const list = await api.getDevices()
   rawDevices.value = list
+  subscribeDevices(list)
 
   if (!selectedDeviceId.value || !list.some((device) => device.device_id === selectedDeviceId.value)) {
     selectedDeviceId.value = list[0]?.device_id || ''
@@ -892,14 +899,58 @@ async function loadDevices() {
   }
 }
 
+function subscribeDevices(devices = rawDevices.value) {
+  devices.forEach((device) => {
+    if (device.device_id) {
+      ws.send('subscribe', { device_id: device.device_id })
+    }
+  })
+}
+
+function applyHardwareControlState(deviceId: string, data: Partial<SensorData> | null | undefined) {
+  if (!data || deviceId !== selectedDeviceId.value) return
+  if (typeof data.light === 'boolean') lightEnabled.value = data.light
+  if (typeof data.wechat_notify === 'boolean') notifyEnabled.value = data.wechat_notify
+  if (typeof data.focus_mode === 'boolean') {
+    focusEnabled.value = data.focus_mode
+    focusMode.value = data.focus_mode ? '专注' : '关闭'
+  }
+}
+
+function applyRealtimeSensorData(data: Record<string, unknown>) {
+  const deviceId = data.device_id as string
+  if (!deviceId) return
+  sensorMap.value = {
+    ...sensorMap.value,
+    [deviceId]: data as unknown as SensorData,
+  }
+  applyHardwareControlState(deviceId, data as unknown as SensorData)
+}
+
+function applyRealtimeHardwareState(data: Record<string, unknown>) {
+  const deviceId = data.device_id as string
+  if (!deviceId) return
+
+  const current = sensorMap.value[deviceId]
+  if (current) {
+    sensorMap.value = {
+      ...sensorMap.value,
+      [deviceId]: { ...current, ...data } as SensorData,
+    }
+  }
+  applyHardwareControlState(deviceId, data as unknown as SensorData)
+}
+
 async function refreshDeviceData(deviceId = activeDevice.value.id, notify = true) {
   if (!deviceId || deviceId === emptyDevice.id) return
 
   try {
+    const data = await api.getLatestData(deviceId)
     sensorMap.value = {
       ...sensorMap.value,
-      [deviceId]: await api.getLatestData(deviceId),
+      [deviceId]: data,
     }
+    applyHardwareControlState(deviceId, data)
 
     if (notify) showStatus('设备数据已刷新')
   } catch (error) {
@@ -1044,6 +1095,7 @@ function formatDate(value?: string) {
     day: '2-digit',
     hour: '2-digit',
     minute: '2-digit',
+    timeZone: BEIJING_TIME_ZONE,
   }).format(new Date(value))
 }
 
@@ -1077,7 +1129,16 @@ onMounted(() => {
   updateDeviceKind()
   window.addEventListener('resize', updateDeviceKind, { passive: true })
 
+  ws.on('auth_result', () => {
+    subscribeDevices()
+  })
+  ws.on('sensor_data', applyRealtimeSensorData)
+  ws.on('device_heartbeat', applyRealtimeHardwareState)
+  ws.on('device_status', () => {
+    if (isSignedIn.value) refreshAll()
+  })
   if (isSignedIn.value) {
+    ws.connect()
     refreshAll()
   }
 })

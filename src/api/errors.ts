@@ -14,7 +14,8 @@ const fieldLabels: Record<string, string> = {
 }
 
 function formatField(loc?: Array<string | number>) {
-  const field = loc?.filter((item) => item !== 'body').at(-1)
+  const fields = loc?.filter((item) => item !== 'body') ?? []
+  const field = fields[fields.length - 1]
   if (field === undefined) return ''
   const key = String(field)
   return fieldLabels[key] || key

@@ -35,6 +35,7 @@ export default defineConfig(({ mode }) => {
       allowedHosts: ['tianmuzc.site', 'www.tianmuzc.site'],
     },
     build: {
+      chunkSizeWarningLimit: 600,
       modulePreload: {
         resolveDependencies(_: string, deps: string[]) {
           return deps.filter((dep) => !dep.includes('element-plus') && !dep.includes('elementPlus'))
@@ -44,6 +45,7 @@ export default defineConfig(({ mode }) => {
         output: {
           manualChunks(id) {
             if (!id.includes('node_modules')) return
+            if (id.includes('/zrender/')) return 'zrender'
             if (id.includes('/echarts/')) return 'echarts'
             if (id.includes('/three/') || id.includes('/@types/three/')) return 'three'
             if (id.includes('/element-plus/') || id.includes('/@element-plus/')) return 'element-plus'

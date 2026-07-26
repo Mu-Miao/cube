@@ -33,6 +33,12 @@ export type SensorData = {
   mold_risk?: number | null
   gas?: number | null
   wifi_rssi?: number | null
+  light?: boolean | null
+  light_brightness?: number | null
+  color_temperature?: number | null
+  wechat_notify?: boolean | null
+  auto_screen_brightness?: boolean | null
+  screen_brightness?: number | null
   focus_mode?: boolean | null
   timestamp?: string
 }
@@ -143,7 +149,17 @@ async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
   })
 
   const text = await response.text()
-  const payload = text ? JSON.parse(text) : null
+  let payload: unknown = null
+  let isJson = !text
+
+  if (text) {
+    try {
+      payload = JSON.parse(text)
+      isJson = true
+    } catch {
+      payload = text
+    }
+  }
 
   if (response.status === 401) {
     clearToken()
@@ -151,7 +167,15 @@ async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
   }
 
   if (!response.ok) {
-    throw new Error(formatApiError({ response: { status: response.status, data: payload } }, `请求失败：${response.status}`))
+    const responseSummary = text.trim().replace(/\s+/g, ' ').slice(0, 120)
+    const fallback = isJson
+      ? `请求失败：${response.status}`
+      : `请求失败：${response.status}（${responseSummary || '响应不是 JSON'}）`
+    throw new Error(formatApiError({ response: { status: response.status, data: payload } }, fallback))
+  }
+
+  if (!isJson) {
+    throw new Error('服务器响应格式错误，请稍后重试')
   }
 
   return unwrap<T>(payload)

@@ -51,7 +51,29 @@ export interface SensorData {
   mold_risk: number     // 霉菌风险等级（0-3）
   gas: number           // 燃气浓度（0=正常）
   wifi_rssi: number     // WiFi 信号强度（dBm）
+  light?: boolean | null
+  light_brightness?: number | null
+  color_temperature?: number | null
+  wechat_notify?: boolean | null
+  auto_screen_brightness?: boolean | null
+  screen_brightness?: number | null
+  focus_mode?: boolean | null
   timestamp: string     // 数据时间
+}
+
+export interface SensorHistoryData {
+  temperature: number | null
+  humidity: number | null
+  illuminance: number | null
+  aqi: number | null
+  pm25: number | null
+  tvoc: number | null
+  eco2: number | null
+  mold_risk: number | null
+  gas: number | null
+  wifi_rssi: number | null
+  timestamp: string | null
+  sample_count: number | null
 }
 
 /** 控制指令请求参数 */
@@ -85,6 +107,13 @@ export const bindDevice = (data: BindDeviceParams) => {
  */
 export const getLatestData = (deviceId: string) => {
   return api.get(`/data/${deviceId}/latest`).then((res) => unwrapData<SensorData | null>(res, null))
+}
+
+/** 获取指定时间范围内、由全部上传记录聚合而成的趋势数据。 */
+export const getTrendData = (deviceId: string, hours: 1 | 6 | 24 | 168) => {
+  return api
+    .get(`/data/${deviceId}/trend`, { params: { hours } })
+    .then((res) => unwrapData<SensorHistoryData[]>(res, []))
 }
 
 /**

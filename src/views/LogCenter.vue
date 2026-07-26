@@ -55,6 +55,7 @@
 import { onMounted, ref, watch } from 'vue'
 import { ElMessage } from 'element-plus/es/components/message/index.mjs'
 import { getOperationLogs, getVoiceLogs, type OperationLogItem, type VoiceLogItem } from '@/api/log'
+import { BEIJING_TIME_ZONE } from '@/utils/format'
 
 defineOptions({ name: 'LogCenterPage' })
 
@@ -65,7 +66,10 @@ const voiceLogs = ref<VoiceLogItem[]>([])
 
 function formatDateTime(value: string | null) {
   if (!value) return '-'
-  return new Date(value).toLocaleString('zh-CN', { hour12: false })
+  return new Date(value).toLocaleString('zh-CN', {
+    hour12: false,
+    timeZone: BEIJING_TIME_ZONE,
+  })
 }
 
 async function fetchLogs() {

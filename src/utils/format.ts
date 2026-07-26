@@ -2,12 +2,18 @@
 // 纯工具函数
 // 提供时间格式化、数值格式化等通用方法
 
+export const BEIJING_TIME_ZONE = 'Asia/Shanghai'
+
 /**
  * 格式化时间为 时:分 格式
  * 用于控制日志和控制面板的时间显示
  */
 export function formatTime(date: Date): string {
-  return date.toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' })
+  return date.toLocaleTimeString('zh-CN', {
+    hour: '2-digit',
+    minute: '2-digit',
+    timeZone: BEIJING_TIME_ZONE,
+  })
 }
 
 /**
@@ -21,6 +27,7 @@ export function formatDateTime(date: Date): string {
     day: '2-digit',
     hour: '2-digit',
     minute: '2-digit',
+    timeZone: BEIJING_TIME_ZONE,
   })
 }
 

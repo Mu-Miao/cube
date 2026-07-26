@@ -199,6 +199,7 @@ import LightColorPicker from '@/components/LightColorPicker.vue'
 import ControlToggle from '@/components/ControlToggle.vue'
 import { useDeviceStore } from '@/store/device'
 import { getDeviceList, getLatestData, sendControlCommand, type SensorData } from '@/api/device'
+import { useWebSocket } from '@/composables/useWebSocket'
 defineOptions({ name: 'ControlPage' })
 
 const CubeSpinGifPreview = defineAsyncComponent(() => import('@/components/brand/CubeSpinGifPreview.vue'))
@@ -244,6 +245,8 @@ const isOnline = computed(() => {
 
 const latestSensorData = ref<SensorData | null>(null)
 let sensorRefreshTimer: ReturnType<typeof window.setInterval> | undefined
+const ws = useWebSocket('/ws')
+let syncingHardwareState = false
 
 const twinLaunchStyle = computed(() => {
   if (!twinLaunchOverlay.value) return undefined
@@ -385,6 +388,23 @@ function addLog(description: string, status: 'success' | 'error') {
   saveStoredControlLogs(selectedDeviceId.value, logs)
 }
 
+function applyHardwareControlState(data: Partial<SensorData> | Record<string, unknown> | null | undefined) {
+  if (!data) return
+  syncingHardwareState = true
+
+  if (typeof data.light === 'boolean') lightState.on = data.light
+  if (typeof data.color_temperature === 'number') lightState.colorTemperature = data.color_temperature
+  if (typeof data.light_brightness === 'number') lightState.brightness = data.light_brightness
+  if (typeof data.wechat_notify === 'boolean') wechatNotifyState.value = data.wechat_notify
+  if (typeof data.auto_screen_brightness === 'boolean') autoScreenBrightness.value = data.auto_screen_brightness
+  if (typeof data.screen_brightness === 'number') screenBrightness.value = data.screen_brightness
+  if (typeof data.focus_mode === 'boolean') focusMode.value = data.focus_mode
+
+  nextTick(() => {
+    syncingHardwareState = false
+  })
+}
+
 /**
  * 发送控制指令（带响应码检查）
  */
@@ -404,6 +424,7 @@ async function sendCommand(command: string, value: string): Promise<boolean> {
 // === 灯光控制监听 ===
 watch(() => lightState.on, async (newVal, oldVal) => {
   if (newVal === oldVal) return
+  if (syncingHardwareState) return
   toggleLoading.light = true
   const command = newVal ? 'on' : 'off'
   const ok = await sendCommand('light', command)
@@ -413,12 +434,14 @@ watch(() => lightState.on, async (newVal, oldVal) => {
 
 watch(() => lightState.colorTemperature, async (newVal, oldVal) => {
   if (newVal === oldVal || !lightState.on) return
+  if (syncingHardwareState) return
   const ok = await sendCommand('color_temperature', String(newVal))
   addLog(`色温 -> ${newVal}K`, ok ? 'success' : 'error')
 })
 
 watch(() => lightState.brightness, async (newVal, oldVal) => {
   if (newVal === oldVal || !lightState.on) return
+  if (syncingHardwareState) return
   const ok = await sendCommand('light_brightness', String(newVal))
   addLog(`灯光亮度 -> ${newVal}%`, ok ? 'success' : 'error')
 })
@@ -426,6 +449,7 @@ watch(() => lightState.brightness, async (newVal, oldVal) => {
 // === 微信消息通知监听 ===
 watch(wechatNotifyState, async (newVal, oldVal) => {
   if (newVal === oldVal) return
+  if (syncingHardwareState) return
   toggleLoading.wechat_notify = true
   const ok = await sendCommand('wechat_notify', newVal ? 'on' : 'off')
   addLog(`${newVal ? '开启' : '关闭'}微信消息通知`, ok ? 'success' : 'error')
@@ -435,6 +459,7 @@ watch(wechatNotifyState, async (newVal, oldVal) => {
 // === 自动屏幕亮度监听 ===
 watch(autoScreenBrightness, async (newVal, oldVal) => {
   if (newVal === oldVal) return
+  if (syncingHardwareState) return
   toggleLoading.auto_screen_brightness = true
   const ok = await sendCommand('auto_screen_brightness', newVal ? 'on' : 'off')
   addLog(`${newVal ? '开启' : '关闭'}自动屏幕亮度`, ok ? 'success' : 'error')
@@ -444,6 +469,7 @@ watch(autoScreenBrightness, async (newVal, oldVal) => {
 // === 专注模式控制监听 ===
 watch(focusMode, async (newVal, oldVal) => {
   if (newVal === oldVal) return
+  if (syncingHardwareState) return
   toggleLoading.focus_mode = true
   const ok = await sendCommand('focus_mode', newVal ? 'on' : 'off')
   addLog(`专注模式 -> ${newVal ? 'ON' : 'OFF'}`, ok ? 'success' : 'error')
@@ -535,9 +561,31 @@ async function fetchDevices() {
   try {
     const res = await getDeviceList()
     deviceStore.setDevices(res || [])
+    subscribeDevices(res || [])
   } catch {
     // 忽略错误
   }
+}
+
+function subscribeDevices(devices = deviceStore.devices) {
+  devices.forEach((device) => {
+    if (device.device_id) {
+      ws.send('subscribe', { device_id: device.device_id })
+    }
+  })
+}
+
+function applyRealtimeSensorData(data: Record<string, unknown>) {
+  const deviceId = data.device_id as string
+  if (!deviceId || deviceId !== selectedDeviceId.value) return
+  latestSensorData.value = data as unknown as SensorData
+  applyHardwareControlState(data)
+}
+
+function applyRealtimeHardwareState(data: Record<string, unknown>) {
+  const deviceId = data.device_id as string
+  if (!deviceId || deviceId !== selectedDeviceId.value) return
+  applyHardwareControlState(data)
 }
 
 async function fetchLatestSensorData(deviceId: string) {
@@ -547,12 +595,20 @@ async function fetchLatestSensorData(deviceId: string) {
   }
   try {
     latestSensorData.value = await getLatestData(deviceId)
+    applyHardwareControlState(latestSensorData.value)
   } catch {
     latestSensorData.value = null
   }
 }
 
 onMounted(async () => {
+  ws.on('auth_result', () => {
+    subscribeDevices()
+  })
+  ws.on('sensor_data', applyRealtimeSensorData)
+  ws.on('device_heartbeat', applyRealtimeHardwareState)
+  ws.connect()
+
   await fetchDevices()
 
   // 从路由 query 参数获取 deviceId（兼容旧链接）

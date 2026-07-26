@@ -19,6 +19,7 @@ export function useWebSocket(url: string) {
   let reconnectTimer: number | null = null
   let reconnectAttempts = 0
   let manuallyDisconnected = false
+  const pendingMessages: { type: string; data: Record<string, unknown> }[] = []
   const MAX_RECONNECT_DELAY = 30000
 
   function resolveWebSocketBaseUrl() {
@@ -90,6 +91,10 @@ export function useWebSocket(url: string) {
       if (token) {
         send('auth', { token })
       }
+      while (pendingMessages.length > 0) {
+        const message = pendingMessages.shift()
+        if (message) send(message.type, message.data)
+      }
     }
 
     /**
@@ -104,9 +109,13 @@ export function useWebSocket(url: string) {
      */
     ws.value.onmessage = (event) => {
       try {
-        const msg = JSON.parse(event.data) as { type: string; data: Record<string, unknown> }
+        const msg = JSON.parse(event.data) as {
+          type: string
+          data?: Record<string, unknown>
+          [key: string]: unknown
+        }
         const handlers = messageHandlers.get(msg.type) || []
-        handlers.forEach((h) => h(msg.data))
+        handlers.forEach((h) => h(msg.data ?? msg))
       } catch (error) {
         console.error('WebSocket message parse error:', error)
       }
@@ -156,7 +165,7 @@ export function useWebSocket(url: string) {
     }
     // 真实模式：通过真实 WebSocket 发送
     if (ws.value?.readyState !== WebSocket.OPEN) {
-      console.warn(`WebSocket 尚未连接，消息未发送: ${type}`)
+      pendingMessages.push({ type, data })
       return
     }
     ws.value.send(JSON.stringify({ type, data }))
