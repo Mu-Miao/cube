@@ -18,10 +18,17 @@ class UserRegister(BaseModel):
     校验用户名长度、密码强度和邮箱格式
     """
     username: str = Field(..., min_length=2, max_length=50, description="用户名")
-    password: str = Field(..., min_length=6, max_length=128, description="密码（最少6位）")
+    password: str = Field(..., min_length=8, max_length=128, description="密码（最少8位，包含字母和数字）")
     email: Optional[str] = Field(None, max_length=100, description="邮箱（可选）")
 
     _normalize_username = field_validator("username")(_strip_text)
+
+    @field_validator("password")
+    @classmethod
+    def validate_password_strength(cls, value: str) -> str:
+        if not any(char.isalpha() for char in value) or not any(char.isdigit() for char in value):
+            raise ValueError("密码必须同时包含字母和数字")
+        return value
 
     @field_validator("email")
     @classmethod

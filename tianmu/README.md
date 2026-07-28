@@ -1,6 +1,6 @@
 # 智能桌面魔方前端
 
-更新时间：2026-07-27
+更新时间：2026-07-28
 
 智能桌面魔方前端基于 Vue 3 + TypeScript + Vite 构建，用于展示和管理桌面魔方 IoT 设备。当前版本已经接入后端核心接口，支持登录注册、设备管理、实时数据监控、远程控制、AI 分析和日志中心。
 
@@ -9,18 +9,20 @@
 前端已经完成三套界面共存的 MVP 演示闭环，并在最近一轮补充了实时硬件状态、趋势数据和构建体积优化：
 
 - `/public` 为默认大众版入口，`/senior` 为长辈版，`/teen/*` 为需要登录的完整控制台。
-- 登录、注册与三套界面共用后端认证和设备数据。
+- 登录、注册与三套界面共用 Pinia 认证状态；Access Token 仅保存在内存，刷新页面通过 HttpOnly Refresh Cookie 恢复登录。
 - 设备卡片、传感器卡片、控制开关、颜色选择器增加 hover、状态光和更强的交互反馈。
 - API 响应已适配后端统一结构 `{ code, message, data }`。
 - 后端校验错误会转换成可读的中文字段提示，版本 API 客户端也能处理纯文本或非标准 JSON 错误。
 - 大众版、长辈版和完整控制台均接入 WebSocket 实时传感器数据与硬件控制状态。
-- WebSocket 在登录后携带最新 Token 建连，连接建立前的订阅会排队发送，退出登录时主动断开。
+- WebSocket 在登录后携带最新 Token 建连，支持 ping/pong、半开连接超时重连、订阅排队和退出主动断开。
 - 控制台趋势图改用后端分桶聚合接口，支持 1 小时、6 小时、24 小时和 7 天范围。
 - 灯光、亮度、色温、通知、专注模式和屏幕亮度会按设备心跳或最新数据同步，避免页面状态与实机状态脱节。
+- 专注模式只在用户点击时下发一次控制指令，并在短暂等待硬件确认期间避免旧传感器状态把按钮反向触发。
 - 时间显示统一使用 Asia/Shanghai（UTC+8）。
 - AI 分析页已接入评分、风险预警、智能建议、周报接口。
 - 日志中心已接入操作日志、语音日志接口。
-- ESP32-S3 实机联调已完成，包括握手、心跳、数据上报、控制轮询和 ACK 回传。
+- Devices、Control、AiAnalysis 已拆出功能子组件；大众版登录屏和 AppLayout 导航/聊天拖拽逻辑也已独立。
+- 旧设备协议的 ESP32-S3 实机联调已完成；新的配对码、Token 轮换、签名下载和控制 ACK 仍需重新做实机回归。
 - Element Plus、ECharts 和部分重组件改为按路由或按需加载；ECharts 只注册当前使用的图表、组件和 Canvas 渲染器，图片资源已压缩。
 - 管理员后台页面文件保留，当前正在开发中，不作为 MVP 演示主入口。
 
@@ -32,7 +34,7 @@ npx eslint src
 npm run test:unit -- --run
 ```
 
-当前前端 2 个测试文件、5 项单元测试通过，类型检查与生产构建通过。
+当前前端 7 个测试文件、15 项单元测试通过，Chromium 关键认证路由 3 项 E2E 通过，严格类型检查与生产构建通过。
 
 详细的首屏优化说明和最近一次构建结果见 [`PERFORMANCE_OPTIMIZATION.md`](./PERFORMANCE_OPTIMIZATION.md)。
 
@@ -115,7 +117,10 @@ tianmu/
 │   ├── main.ts
 │   ├── App.vue
 │   ├── api/
-│   │   ├── index.ts          # Axios 实例、Token 注入、响应解包
+│   │   ├── index.ts          # Axios、401 刷新重试、统一错误处理
+│   │   ├── session.ts        # 内存 Access Token 与 Cookie 会话恢复
+│   │   ├── demoInterceptor.ts # 独立 Demo mock adapter
+│   │   ├── versionClient.ts  # 三套界面共享版本客户端
 │   │   ├── errors.ts         # 后端错误与字段校验信息格式化
 │   │   ├── auth.ts           # 登录、注册
 │   │   ├── device.ts         # 设备、数据、控制接口
@@ -143,7 +148,7 @@ tianmu/
 │   │   └── useWebSocket.ts
 │   ├── router/
 │   │   └── index.ts
-│   ├── store/
+│   ├── stores/
 │   │   ├── auth.ts
 │   │   └── device.ts
 │   ├── utils/
@@ -176,9 +181,14 @@ npm run build
 # 单元测试
 npm run test:unit -- --run
 
-# ESLint 检查
-npx eslint src
+# 只读 ESLint 检查
+npx eslint src e2e
+
+# Chromium 关键流程
+npx playwright test e2e/auth-routing.spec.ts --project=chromium
 ```
+
+`strictPort: true` 只禁止 Vite 在“选定端口被占用”时自动递增；显式执行 `npm run dev -- --port 5174` 会把选定端口改为 5174，二者不冲突。
 
 ## 演示模式
 
@@ -229,7 +239,7 @@ Python 代理监听 `127.0.0.1:8080`：`/api/*`、`/ws`、`/health` 和 `/firmwa
 | 优先级 | 事项 | 说明 |
 |---|---|---|
 | 高 | WebSocket 公网稳定性复核 | 按实际域名持续验证断线重连、订阅恢复和多页面切换 |
-| 中 | 前端测试扩展 | 按需补登录、设备、控制、AI、日志主流程测试 |
+| 中 | 业务 E2E 扩展 | 继续补真实后端下的设备、控制、AI、日志流程 |
 | 开发中 | 告警闭环 | 告警中心或告警持久化展示已砍出当前 MVP |
 | 中 | 公网部署复核 | 按实际域名验证 HTTPS、API、WebSocket 和 OTA 下载 |
 | 低 | 网络加载复核 | 按生产网络瀑布图继续检查 Element Plus、字体和图片资源 |

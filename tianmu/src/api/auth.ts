@@ -56,5 +56,5 @@ export const register = (data: RegisterParams) => {
  * 后端清除会话（可选实现），前端直接清除本地 Token
  */
 export const logout = () => {
-  return api.post('/auth/logout').then((r) => r.data) as Promise<unknown>
+  return api.post('/auth/logout') as Promise<unknown>
 }

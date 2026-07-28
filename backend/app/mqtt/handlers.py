@@ -3,23 +3,35 @@
 # 处理来自硬件设备的各类 MQTT 消息：握手、心跳、数据上报等
 
 import json
-import hashlib
 import re
 import time
 from datetime import datetime, timezone
-from urllib.parse import urljoin
 
 from loguru import logger
+from pydantic import ValidationError
+from sqlalchemy import select
 
-from app.config import BACKEND_DIR, settings
+from app.config import settings
 from app.db.session import async_session_factory
 from app.models.device import Device
 from app.models.ota_log import OtaLog
 from app.models.sensor_data import SensorData
 from app.mqtt.client import mqtt_client
 from app.mqtt.topics import get_status_topic, get_data_topic
+from app.schemas.data import SensorDataPayload
 from app.services.alert_service import check_alerts
 from app.services.control_status import normalize_control_status, persist_latest_control_status
+from app.services.control_queue import control_queue
+from app.services.device_credentials import (
+    authorize_handshake,
+    issue_device_token,
+    verify_device_token,
+)
+from app.services.firmware_service import (
+    FIRMWARE_DIR,
+    build_signed_firmware_url,
+    firmware_md5,
+)
 from app.utils.timezone import shanghai_isoformat
 from app.websocket.manager import ws_manager
 
@@ -78,9 +90,25 @@ async def _handle_handshake(device_id: str, data: dict) -> None:
     协议: MQTT 握手请求协议.json
     """
     async with async_session_factory() as db:
-        from sqlalchemy import select
         result = await db.execute(select(Device).where(Device.device_id == device_id))
         device = result.scalar_one_or_none()
+        if not await authorize_handshake(
+            db,
+            device,
+            device_id,
+            data.get("pairing_code"),
+            data.get("token"),
+        ):
+            ack_payload = json.dumps({
+                "code": 403,
+                "type": "handshake_ack",
+                "msg": "配对凭证无效",
+                "timestamp": int(time.time()),
+                "token": "",
+                "expire_time": 0,
+            })
+            await mqtt_client.publish(get_status_topic(device_id), ack_payload.encode())
+            return
 
         if device is None:
             device = Device(
@@ -93,10 +121,7 @@ async def _handle_handshake(device_id: str, data: dict) -> None:
             device.chip_model = data.get("chip_model")
             device.firmware_version = data.get("version")
 
-        # 重复握手复用已有 Token，避免 ACK 到达前的在途数据被新 Token 拒绝。
-        import secrets
-        device_token = device.token or f"dev_{secrets.token_hex(16)}"
-        device.token = device_token
+        device_token = issue_device_token(device)
         device.status = "online"
         device.last_seen = datetime.now(timezone.utc)
         await db.commit()
@@ -114,7 +139,7 @@ async def _handle_handshake(device_id: str, data: dict) -> None:
         "msg": "握手成功",
         "timestamp": int(time.time()),
         "token": device_token,
-        "expire_time": 600,
+        "expire_time": settings.DEVICE_TOKEN_EXPIRE_SECONDS,
     })
     await mqtt_client.publish(get_status_topic(device_id), ack_payload.encode())
 
@@ -128,7 +153,6 @@ async def _handle_heartbeat(device_id: str, data: dict) -> None:
     协议: 心跳包协议.json
     """
     async with async_session_factory() as db:
-        from sqlalchemy import select
         result = await db.execute(select(Device).where(Device.device_id == device_id))
         device = result.scalar_one_or_none()
 
@@ -137,13 +161,8 @@ async def _handle_heartbeat(device_id: str, data: dict) -> None:
             return  # 设备未注册，忽略心跳
 
         # 验证 Token
-        if device.token != data.get("token"):
-            logger.warning(
-                "心跳 Token 无效: device_id={}, incoming_token={}, expected_token={}",
-                device_id,
-                data.get("token"),
-                device.token,
-            )
+        if not verify_device_token(device, data.get("token")):
+            logger.warning("心跳 Token 无效: device_id={}", device_id)
             return
 
         device.status = "online"
@@ -186,10 +205,21 @@ async def _handle_data_report(device_id: str, data: dict) -> None:
         sensor_data = payload if isinstance(payload, dict) else {}
         status_data = data.get("status", {})
     sensor_data = _normalize_pm25_key(sensor_data)
+    try:
+        sensor_data = SensorDataPayload.model_validate(sensor_data).model_dump()
+    except ValidationError:
+        logger.warning("数据上报范围校验失败: device_id={}", device_id)
+        ack_payload = json.dumps({
+            "code": 422,
+            "type": "data_report_ack",
+            "msg": "传感器数据超出允许范围",
+            "timestamp": int(time.time()),
+            "receive_status": False,
+        })
+        await mqtt_client.publish(get_data_topic(device_id), ack_payload.encode())
+        return
 
     async with async_session_factory() as db:
-        from sqlalchemy import select
-
         # 验证设备及 Token
         result = await db.execute(select(Device).where(Device.device_id == device_id))
         device = result.scalar_one_or_none()
@@ -206,13 +236,8 @@ async def _handle_data_report(device_id: str, data: dict) -> None:
             await mqtt_client.publish(get_data_topic(device_id), ack_payload.encode())
             return
 
-        if device.token != data.get("token"):
-            logger.warning(
-                "数据上报 Token 无效: device_id={}, incoming_token={}, expected_token={}",
-                device_id,
-                data.get("token"),
-                device.token,
-            )
+        if not verify_device_token(device, data.get("token")):
+            logger.warning("数据上报 Token 无效: device_id={}", device_id)
             ack_payload = json.dumps({
                 "code": 401,
                 "type": "data_report_ack",
@@ -294,9 +319,8 @@ def _parse_version(value: str) -> tuple[int, ...]:
 
 
 def _latest_firmware() -> tuple[str, str, str] | None:
-    firmware_dir = BACKEND_DIR / "data" / "firmware"
     candidates = []
-    for path in firmware_dir.glob("*.bin"):
+    for path in FIRMWARE_DIR.glob("*.bin"):
         version_match = re.search(r"v?(\d+(?:\.\d+)+)", path.name)
         if not version_match:
             continue
@@ -306,14 +330,12 @@ def _latest_firmware() -> tuple[str, str, str] | None:
         return None
 
     _version_key, version, path = max(candidates, key=lambda item: item[0])
-    md5 = hashlib.md5(path.read_bytes()).hexdigest()
+    md5 = firmware_md5(path)
     base_url = settings.FIRMWARE_PUBLIC_BASE_URL.strip()
     if not base_url:
         logger.warning("无法生成 OTA URL: FIRMWARE_PUBLIC_BASE_URL 未配置")
         return None
-    if not base_url.endswith("/"):
-        base_url += "/"
-    return version, urljoin(base_url, f"firmware/{path.name}"), md5
+    return version, build_signed_firmware_url(base_url, path.name), md5
 
 
 async def _handle_version_check(device_id: str, data: dict) -> None:
@@ -322,8 +344,6 @@ async def _handle_version_check(device_id: str, data: dict) -> None:
     协议: 版本检查请求协议.json -> OTA更新推送协议(1).json
     """
     async with async_session_factory() as db:
-        from sqlalchemy import select
-
         result = await db.execute(select(Device).where(Device.device_id == device_id))
         device = result.scalar_one_or_none()
 
@@ -341,7 +361,7 @@ async def _handle_version_check(device_id: str, data: dict) -> None:
             await mqtt_client.publish(get_status_topic(device_id), json.dumps(payload).encode())
             return
 
-        if device.token != data.get("token"):
+        if not verify_device_token(device, data.get("token")):
             logger.warning("版本检查 Token 无效: device_id={}", device_id)
             payload = {
                 "code": 401,
@@ -405,18 +425,23 @@ async def _handle_control_ack(device_id: str, data: dict) -> None:
     command = data.get("command", "")
     result_status = data.get("result", "")
     value = data.get("value", "")
-    logger.info(
-        "控制结果 ACK: device_id={}, command={}, value={}, result={}",
-        device_id,
-        command,
-        value,
-        result_status,
-    )
+    async with async_session_factory() as db:
+        device = (
+            await db.execute(select(Device).where(Device.device_id == device_id))
+        ).scalar_one_or_none()
+        if not verify_device_token(device, data.get("token")):
+            logger.warning("忽略无效控制 ACK: device_id={}", device_id)
+            return
 
-    if command == "ota_update":
-        from sqlalchemy import select
+        logger.info(
+            "控制结果 ACK: device_id={}, command={}, value={}, result={}",
+            device_id,
+            command,
+            value,
+            result_status,
+        )
 
-        async with async_session_factory() as db:
+        if command == "ota_update":
             query = select(OtaLog).where(
                 OtaLog.device_id == device_id,
                 OtaLog.status == "pushed",
@@ -441,6 +466,12 @@ async def _handle_control_ack(device_id: str, data: dict) -> None:
                     device_id,
                     value,
                 )
+        else:
+            await db.commit()
+
+    command_id = str(data.get("command_id") or "")
+    if command_id:
+        await control_queue.acknowledge(device_id, command_id)
 
     # 通过 WebSocket 推送给前端
     await ws_manager.broadcast_control_result(device_id, command, value, result_status)

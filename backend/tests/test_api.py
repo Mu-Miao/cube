@@ -5,6 +5,7 @@ import json
 import time
 from contextlib import asynccontextmanager
 from pathlib import Path
+from urllib.parse import urlsplit
 
 import pytest
 from httpx import AsyncClient
@@ -163,6 +164,8 @@ async def test_control_command_flow(client: AsyncClient):
     )
     assert resp.status_code == 200
     assert resp.json()["message"] == "指令已下发"
+    first_command_id = resp.json()["data"]["command_id"]
+    assert resp.json()["data"]["channel"] == "http_pull"
 
     resp = await client.get(
         f"/api/v1/control/{device_id}/pull",
@@ -172,8 +175,21 @@ async def test_control_command_flow(client: AsyncClient):
     body = resp.json()
     assert body["code"] == 0
     assert body["data"]["pending"] is True
+    assert body["data"]["command_id"] == first_command_id
     assert body["data"]["command"] == "light"
     assert body["data"]["value"] == "on"
+
+    ack = await client.post(
+        f"/api/v1/control/{device_id}/ack",
+        json={
+            "token": device_token,
+            "command_id": first_command_id,
+            "command": "light",
+            "value": "on",
+            "result": "success",
+        },
+    )
+    assert ack.status_code == 200
 
     resp = await client.post(
         f"/api/v1/control/{device_id}",
@@ -259,7 +275,7 @@ async def test_ota_push_publishes_hardware_payload(
     headers = {"Authorization": f"Bearer {resp.json()['data']['access_token']}"}
 
     device_id = "OTA001"
-    await client.post(
+    handshake_response = await client.post(
         "/api/v1/device/auth",
         json={
             "device_id": device_id,
@@ -269,6 +285,7 @@ async def test_ota_push_publishes_hardware_payload(
             "version": "1.0.0",
         },
     )
+    device_token = handshake_response.json()["token"]
 
     published: list[tuple[str, bytes]] = []
 
@@ -319,6 +336,7 @@ async def test_ota_push_publishes_hardware_payload(
     await _handle_control_ack(
         device_id,
         {
+            "token": device_token,
             "command": "ota_update",
             "value": "1.1.0",
             "result": "success",
@@ -351,7 +369,7 @@ async def test_ota_push_publishes_hardware_payload(
         headers=headers,
     )
     assert failed_resp.json()["code"] == 500
-    assert "MQTT 未连接" in failed_resp.json()["message"]
+    assert failed_resp.json()["message"] == "固件推送失败，请检查 MQTT 连接"
 
 
 @pytest.mark.asyncio
@@ -398,9 +416,21 @@ async def test_ota_firmware_upload_returns_public_url(
     assert resp.status_code == 200
     body = resp.json()
     assert body["code"] == 0
-    assert body["data"]["url"] == "https://tianmuzc.site/firmware/v1.1.0.bin"
+    assert body["data"]["url"].startswith(
+        "https://tianmuzc.site/api/v1/ota/firmware/v1.1.0.bin?"
+    )
+    assert "expires=" in body["data"]["url"]
+    assert "signature=" in body["data"]["url"]
     assert body["data"]["md5"] == "b1d9cbf0a8651c78ccd96a1e8b32a50f"
     assert body["data"]["size"] == len(b"test-firmware")
+    signed_url = urlsplit(body["data"]["url"])
+    download = await client.get(f"{signed_url.path}?{signed_url.query}")
+    assert download.status_code == 200
+    assert download.content == b"test-firmware"
+    tampered = await client.get(
+        f"{signed_url.path}?{signed_url.query.replace('signature=', 'signature=bad')}"
+    )
+    assert tampered.status_code == 403
     firmware_path = Path("data/firmware/v1.1.0.bin")
     if firmware_path.exists():
         firmware_path.unlink()
@@ -416,11 +446,13 @@ def test_latest_firmware_builds_version_check_response_source():
     finally:
         firmware_path.unlink()
 
-    assert latest == (
-        "9.9.9",
-        "https://tianmuzc.site/firmware/firmware_v9.9.9.bin",
-        "c29a11009a9e73ce1b4057f11d284ff5",
+    assert latest is not None
+    assert latest[0] == "9.9.9"
+    assert latest[1].startswith(
+        "https://tianmuzc.site/api/v1/ota/firmware/firmware_v9.9.9.bin?"
     )
+    assert "expires=" in latest[1] and "signature=" in latest[1]
+    assert latest[2] == "c29a11009a9e73ce1b4057f11d284ff5"
 
 
 @pytest.mark.asyncio

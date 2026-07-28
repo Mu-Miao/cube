@@ -7,19 +7,37 @@ import { createPinia } from 'pinia'
 
 import App from './App.vue'
 import router from './router'
+import { bootstrapSession } from '@/api/session'
+import { env } from '@/config/env'
+import { useAuthStore } from '@/stores/auth'
 
 // 导入全局样式：基础重置 + Element Plus 暗色主题覆盖
 import '@/assets/styles/main.css'
 import '@/assets/styles/element-overrides.css'
 
 const app = createApp(App)
+document.title = env.appTitle
+
+await bootstrapSession()
+
+const pinia = createPinia()
+app.use(pinia)
+const authStore = useAuthStore(pinia)
+window.addEventListener('cube:auth-expired', () => {
+  authStore.clearAuth()
+  if (router.currentRoute.value.meta.requiresAuth) {
+    void router.push({ name: 'login', query: { redirect: router.currentRoute.value.fullPath } })
+  }
+})
 
 // 注册 Pinia（Vue 3 官方推荐的状态管理库）
-app.use(createPinia())
-
 // 注册 Vue Router（管理页面路由和导航守卫）
 router.beforeEach(async (to) => {
-  if (to.path.startsWith('/teen')) {
+  if (
+    to.path.startsWith('/teen')
+    || to.path === '/login'
+    || to.path === '/register'
+  ) {
     const { installElementPlus } = await import('@/plugins/elementPlus')
     await installElementPlus(app)
   }

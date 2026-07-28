@@ -21,6 +21,8 @@ class DeviceHandshake(BaseModel):
     type: str = Field("handshake", description="消息类型，固定为 handshake")
     chip_model: str = Field(..., description="芯片型号，如 ESP32-S3")
     version: str = Field(..., description="固件版本号")
+    pairing_code: Optional[str] = Field(None, min_length=16, max_length=128)
+    token: Optional[str] = Field(None, min_length=16, max_length=128)
 
 
 class DeviceHandshakeAck(BaseModel):

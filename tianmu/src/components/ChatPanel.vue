@@ -90,7 +90,7 @@
 <script setup lang="ts">
 import { ref, computed, nextTick, watch } from 'vue'
 import { streamChat, type ChatMessage } from '@/api/chat'
-import { useDeviceStore } from '@/store/device'
+import { useDeviceStore } from '@/stores/device'
 import mascotImg from '@/assets/mascot/role_normal.webp'
 
 defineOptions({ name: 'ChatPanel' })

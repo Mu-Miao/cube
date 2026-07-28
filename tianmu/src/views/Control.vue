@@ -143,7 +143,13 @@
               <span class="control-panel__title">系统控制</span>
             </div>
             <div class="control-panel__body">
-              <ControlToggle v-model="focusMode" label="专注模式" :disabled="!isOnline" :loading="toggleLoading.focus_mode" />
+              <ControlToggle
+                :model-value="focusMode"
+                label="专注模式"
+                :disabled="!isOnline"
+                :loading="toggleLoading.focus_mode"
+                @update:model-value="handleFocusModeChange"
+              />
               <div class="slider-control">
                 <span class="slider-control__label">屏幕亮度</span>
                 <div class="slider-control__slider">
@@ -156,26 +162,7 @@
         </section>
       </main>
 
-      <section class="control-log-dock">
-        <div class="control-panel">
-          <div class="control-panel__header">
-            <span class="control-panel__title">控制日志</span>
-            <span class="control-panel__subtitle">近 3 天 · 最近 {{ maxLogs }} 条</span>
-          </div>
-          <div class="control-panel__body">
-            <div v-if="controlLogs.length === 0" class="log-empty">暂无操作记录</div>
-            <div v-else class="log-list">
-              <div v-for="log in controlLogs" :key="log.id" class="log-item">
-                <span class="log-item__time">{{ log.time }}</span>
-                <span class="log-item__desc">{{ log.description }}</span>
-                <el-tag :type="log.status === 'success' ? 'success' : 'danger'" size="small" effect="plain" class="log-item__tag">
-                  {{ log.status === 'success' ? '成功' : '失败' }}
-                </el-tag>
-              </div>
-            </div>
-          </div>
-        </div>
-      </section>
+      <ControlLogDock :logs="controlLogs" :max-logs="maxLogs" />
     </template>
 
     <CubeSpinGifPreview
@@ -197,7 +184,8 @@ import { ArrowLeft, Monitor, WarningFilled } from '@element-plus/icons-vue'
 import DeviceStatusDot from '@/components/DeviceStatusDot.vue'
 import LightColorPicker from '@/components/LightColorPicker.vue'
 import ControlToggle from '@/components/ControlToggle.vue'
-import { useDeviceStore } from '@/store/device'
+import ControlLogDock from '@/components/control/ControlLogDock.vue'
+import { useDeviceStore } from '@/stores/device'
 import { getDeviceList, getLatestData, sendControlCommand, type SensorData } from '@/api/device'
 import { useWebSocket } from '@/composables/useWebSocket'
 defineOptions({ name: 'ControlPage' })
@@ -244,9 +232,11 @@ const isOnline = computed(() => {
 })
 
 const latestSensorData = ref<SensorData | null>(null)
-let sensorRefreshTimer: ReturnType<typeof window.setInterval> | undefined
+let sensorRefreshTimer: number | undefined
 const ws = useWebSocket('/ws')
 let syncingHardwareState = false
+const FOCUS_CONFIRM_TIMEOUT_MS = 15_000
+let pendingFocusMode: { value: boolean; expiresAt: number } | null = null
 
 const twinLaunchStyle = computed(() => {
   if (!twinLaunchOverlay.value) return undefined
@@ -398,7 +388,20 @@ function applyHardwareControlState(data: Partial<SensorData> | Record<string, un
   if (typeof data.wechat_notify === 'boolean') wechatNotifyState.value = data.wechat_notify
   if (typeof data.auto_screen_brightness === 'boolean') autoScreenBrightness.value = data.auto_screen_brightness
   if (typeof data.screen_brightness === 'number') screenBrightness.value = data.screen_brightness
-  if (typeof data.focus_mode === 'boolean') focusMode.value = data.focus_mode
+  if (typeof data.focus_mode === 'boolean') {
+    const hardwareFocusMode = data.focus_mode
+    if (pendingFocusMode) {
+      if (hardwareFocusMode === pendingFocusMode.value) {
+        pendingFocusMode = null
+        focusMode.value = hardwareFocusMode
+      } else if (Date.now() >= pendingFocusMode.expiresAt) {
+        pendingFocusMode = null
+        focusMode.value = hardwareFocusMode
+      }
+    } else {
+      focusMode.value = hardwareFocusMode
+    }
+  }
 
   nextTick(() => {
     syncingHardwareState = false
@@ -466,15 +469,24 @@ watch(autoScreenBrightness, async (newVal, oldVal) => {
   toggleLoading.auto_screen_brightness = false
 })
 
-// === 专注模式控制监听 ===
-watch(focusMode, async (newVal, oldVal) => {
-  if (newVal === oldVal) return
-  if (syncingHardwareState) return
+// === 专注模式控制 ===
+async function handleFocusModeChange(newVal: boolean) {
+  if (toggleLoading.focus_mode || !isOnline.value) return
+  const previousValue = focusMode.value
+  focusMode.value = newVal
+  pendingFocusMode = {
+    value: newVal,
+    expiresAt: Date.now() + FOCUS_CONFIRM_TIMEOUT_MS,
+  }
   toggleLoading.focus_mode = true
   const ok = await sendCommand('focus_mode', newVal ? 'on' : 'off')
+  if (!ok) {
+    pendingFocusMode = null
+    focusMode.value = previousValue
+  }
   addLog(`专注模式 -> ${newVal ? 'ON' : 'OFF'}`, ok ? 'success' : 'error')
   toggleLoading.focus_mode = false
-})
+}
 
 // === 屏幕亮度 ===
 async function handleScreenBrightnessChange(val: number) {
@@ -487,6 +499,7 @@ async function handleScreenBrightnessChange(val: number) {
  */
 function selectDevice(deviceId: string) {
   selectedDeviceId.value = deviceId
+  pendingFocusMode = null
   // 重置控制状态
   lightState.on = false
   lightState.colorTemperature = 3000
@@ -551,7 +564,8 @@ function goBackToDashboard() {
       }),
     )
   }
-  router.push({ path: '/teen/dashboard', query: route.query.demo ? { demo: route.query.demo } : undefined })
+  const demo = route.query.demo
+  router.push(demo ? { path: '/teen/dashboard', query: { demo } } : { path: '/teen/dashboard' })
 }
 
 /**
@@ -636,840 +650,4 @@ onUnmounted(() => {
 })
 </script>
 
-<style scoped>
-/* ========== Liquid Glass — CSS Custom Properties ========== */
-.control-page {
-  --glass-bg: linear-gradient(145deg, rgba(102, 198, 255, 0.075), rgba(5, 22, 49, 0.31));
-  --glass-border: 1px solid rgba(255, 255, 255, 0.18);
-  --glass-shadow: 0 8px 32px rgba(0, 0, 0, 0.12);
-  --glass-inner-shadow: inset 0 1px 1px rgba(255, 255, 255, 0.15);
-  --glass-radius: 20px;
-  --glass-radius-sm: 14px;
-  --glass-blur: blur(18px);
-  --glass-saturation: saturate(1.6);
-  --color-cube-primary: #06B6D4;
-  --color-cube-accent: #A3E635;
-  --text-primary: rgba(255, 255, 255, 0.92);
-  --text-secondary: rgba(255, 255, 255, 0.60);
-  --text-disabled: rgba(255, 255, 255, 0.30);
-
-  display: flex;
-  gap: 0;
-  height: calc(100vh - 60px - 48px);
-  margin: calc(-1 * var(--spacing-page));
-  margin-top: calc(-1 * var(--spacing-page) + 0px);
-}
-
-/* ========== 左侧设备列表 — Glass Sidebar ========== */
-.control-sidebar {
-  width: 240px;
-  flex-shrink: 0;
-  background: var(--glass-bg);
-  border-right: var(--glass-border);
-  display: flex;
-  flex-direction: column;
-  overflow: hidden;
-  backdrop-filter: var(--glass-blur) var(--glass-saturation);
-  -webkit-backdrop-filter: var(--glass-blur) var(--glass-saturation);
-}
-.control-sidebar__title {
-  padding: 18px 16px 12px;
-  font-family: var(--font-display);
-  font-size: 14px;
-  font-weight: 600;
-  color: var(--text-secondary);
-  letter-spacing: 0.5px;
-  text-transform: uppercase;
-}
-.control-sidebar__list {
-  flex: 1;
-  overflow-y: auto;
-  padding: 0 8px 8px;
-}
-
-/* 设备列表项 — Glass List Items */
-.device-list-item {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  padding: 11px 12px;
-  border-radius: var(--glass-radius-sm);
-  cursor: pointer;
-  transition:
-    transform var(--transition-spring),
-    background var(--transition-base),
-    border-color var(--transition-base),
-    color var(--transition-fast);
-  margin-bottom: 6px;
-  border: 1px solid transparent;
-  position: relative;
-  overflow: hidden;
-}
-.device-list-item:hover {
-  background: rgba(255, 255, 255, 0.12);
-  border-color: rgba(255, 255, 255, 0.22);
-  transform: translateX(3px);
-}
-.device-list-item--active {
-  background: rgba(255, 255, 255, 0.12);
-  border-color: rgba(255, 255, 255, 0.28);
-  box-shadow: var(--glass-inner-shadow);
-}
-.device-list-item--active::before {
-  content: '';
-  position: absolute;
-  left: 0;
-  top: 9px;
-  bottom: 9px;
-  width: 3px;
-  border-radius: 0 2px 2px 0;
-  background: linear-gradient(180deg, var(--color-cube-primary), var(--color-cube-accent));
-}
-.device-list-item--active .device-list-item__name {
-  color: var(--color-cube-primary);
-  font-weight: 500;
-}
-.device-list-item--offline {
-  opacity: 0.5;
-}
-.device-list-item__name {
-  font-size: 14px;
-  color: var(--text-primary);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-.device-list-empty {
-  text-align: center;
-  padding: 40px 16px;
-  font-size: 13px;
-  color: var(--text-disabled);
-}
-
-/* ========== 右侧控制区 ========== */
-.control-main {
-  flex: 1;
-  overflow-y: auto;
-  padding: var(--spacing-page);
-  display: flex;
-  flex-direction: column;
-  gap: 20px;
-  background: transparent;
-}
-
-/* 未选中设备 */
-.control-empty {
-  flex: 1;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  gap: 16px;
-  color: var(--text-disabled);
-}
-.control-empty__text {
-  font-size: 15px;
-}
-
-/* 设备标题栏 — Glass Header */
-.control-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 18px 20px;
-  border: var(--glass-border);
-  border-radius: var(--glass-radius);
-  background: var(--glass-bg);
-  box-shadow: var(--glass-shadow), var(--glass-inner-shadow);
-  backdrop-filter: var(--glass-blur) var(--glass-saturation);
-  -webkit-backdrop-filter: var(--glass-blur) var(--glass-saturation);
-}
-.control-header__info {
-  display: flex;
-  align-items: baseline;
-  gap: 12px;
-}
-.control-header__name {
-  font-family: var(--font-display);
-  font-size: 20px;
-  font-weight: 700;
-  color: var(--text-primary);
-  margin: 0;
-  display: flex;
-  align-items: center;
-  gap: 10px;
-}
-.control-header__name::before {
-  content: '';
-  width: 4px;
-  height: 22px;
-  border-radius: var(--radius-full);
-  background: linear-gradient(180deg, var(--color-cube-primary), var(--color-cube-accent));
-  box-shadow: 0 0 14px rgba(6, 182, 212, 0.45);
-}
-.control-header__id {
-  font-family: var(--font-mono);
-  font-size: 12px;
-  color: var(--text-secondary);
-}
-
-/* 离线提示 — Glass Warning */
-.control-offline-tip {
-  position: absolute;
-  top: 122px;
-  left: 24px;
-  right: 24px;
-  z-index: 12;
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 10px 16px;
-  background: rgba(239, 68, 68, 0.10);
-  border: 1px solid rgba(239, 68, 68, 0.25);
-  border-radius: var(--glass-radius-sm);
-  color: var(--color-danger);
-  font-size: 13px;
-  font-weight: 500;
-  backdrop-filter: blur(12px) saturate(1.4);
-  -webkit-backdrop-filter: blur(12px) saturate(1.4);
-  box-shadow: 0 12px 28px rgba(239, 68, 68, 0.08), var(--glass-inner-shadow);
-}
-
-/* ========== 控制面板网格 ========== */
-.control-panels {
-  display: grid;
-  grid-template-columns: repeat(2, 1fr);
-  gap: 16px;
-}
-.control-panels--disabled {
-  pointer-events: none;
-  opacity: 0.5;
-}
-
-/* 单个控制面板 — Glass Card */
-.control-panel {
-  position: relative;
-  background: var(--glass-bg);
-  backdrop-filter: var(--glass-blur) var(--glass-saturation);
-  -webkit-backdrop-filter: var(--glass-blur) var(--glass-saturation);
-  border: var(--glass-border);
-  border-radius: var(--glass-radius);
-  overflow: hidden;
-  box-shadow: var(--glass-shadow), var(--glass-inner-shadow);
-  transition:
-    transform var(--transition-spring),
-    border-color var(--transition-base),
-    box-shadow var(--transition-base),
-    background var(--transition-base);
-  animation: fade-up-blur 0.5s cubic-bezier(0.16, 1, 0.3, 1) both;
-}
-/* Top edge highlight — subtle white gradient line */
-.control-panel::before {
-  content: '';
-  position: absolute;
-  inset: 0 0 auto;
-  height: 1px;
-  background: linear-gradient(
-    90deg,
-    rgba(255, 255, 255, 0.40),
-    rgba(255, 255, 255, 0.12),
-    transparent
-  );
-}
-.control-panel:hover {
-  transform: translateY(-4px);
-  background: rgba(255, 255, 255, 0.12);
-  border-color: rgba(255, 255, 255, 0.28);
-  box-shadow:
-    0 12px 40px rgba(0, 0, 0, 0.18),
-    inset 0 1px 1px rgba(255, 255, 255, 0.20);
-}
-.control-panel:nth-child(2) { animation-delay: 60ms; }
-.control-panel:nth-child(3) { animation-delay: 120ms; }
-.control-panel:nth-child(4) { animation-delay: 180ms; }
-
-.control-panel__header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 16px 20px 14px;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.10);
-  background: rgba(255, 255, 255, 0.03);
-}
-.control-panel__title {
-  font-family: var(--font-display);
-  font-size: 14px;
-  font-weight: 600;
-  color: var(--text-primary);
-}
-.control-panel__status {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  font-size: 13px;
-  color: var(--text-secondary);
-}
-.control-panel__subtitle {
-  font-size: 12px;
-  color: var(--text-disabled);
-}
-
-.control-panel__body {
-  padding: 20px;
-  display: flex;
-  flex-direction: column;
-  gap: 16px;
-}
-.control-panel__body--toggles {
-  gap: 14px;
-}
-
-/* 滑块控制 — Glass Slider */
-.slider-control {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  padding: 12px;
-  border: 1px solid rgba(255, 255, 255, 0.12);
-  border-radius: var(--glass-radius-sm);
-  background: rgba(255, 255, 255, 0.05);
-}
-.slider-control__label {
-  font-family: var(--font-body);
-  font-size: 14px;
-  font-weight: 500;
-  color: var(--text-primary);
-  white-space: nowrap;
-  flex-shrink: 0;
-}
-.slider-control__slider {
-  flex: 1;
-}
-.slider-control__slider :deep(.el-slider__runway) {
-  height: 4px;
-}
-.slider-control__slider :deep(.el-slider__button) {
-  width: 16px;
-  height: 16px;
-}
-.slider-control__value {
-  font-family: var(--font-mono);
-  font-size: 13px;
-  color: var(--text-secondary);
-  min-width: 36px;
-  text-align: right;
-  flex-shrink: 0;
-}
-
-/* ========== 控制日志 — Glass Log ========== */
-.log-empty {
-  text-align: center;
-  padding: 20px;
-  font-size: 13px;
-  color: var(--text-disabled);
-}
-.log-list {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-}
-.log-item {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  padding: 8px 10px;
-  background: rgba(255, 255, 255, 0.05);
-  border: 1px solid rgba(255, 255, 255, 0.12);
-  border-radius: var(--glass-radius-sm);
-  font-size: 13px;
-  transition:
-    transform var(--transition-base),
-    border-color var(--transition-base),
-    background var(--transition-base);
-}
-.log-item:hover {
-  transform: translateX(3px);
-  border-color: rgba(255, 255, 255, 0.22);
-  background: rgba(255, 255, 255, 0.12);
-}
-.log-item__time {
-  font-family: var(--font-mono);
-  font-size: 12px;
-  color: var(--text-secondary);
-  flex-shrink: 0;
-}
-.log-item__desc {
-  flex: 1;
-  color: var(--text-primary);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-.log-item__tag {
-  flex-shrink: 0;
-}
-
-/* ========== Element Plus 覆盖 ========== */
-.control-panel :deep(.el-slider__runway) {
-  background-color: rgba(255, 255, 255, 0.10);
-}
-.control-panel :deep(.el-slider__bar) {
-  background: linear-gradient(90deg, var(--color-cube-primary), var(--color-cube-accent));
-}
-.control-panel :deep(.el-slider__button) {
-  border-color: var(--color-cube-primary);
-}
-
-/* ========== Digital Twin Control Rebuild ========== */
-.control-page {
-  position: relative;
-  min-height: calc(100vh - 60px - 48px);
-  height: auto;
-  margin: calc(-1 * var(--spacing-page));
-  padding: 24px;
-  display: flex;
-  flex-direction: column;
-  gap: 16px;
-  overflow: hidden;
-  background:
-    radial-gradient(circle at 50% 44%, rgba(34, 211, 238, 0.16), transparent 38%),
-    radial-gradient(circle at 68% 58%, rgba(163, 230, 53, 0.08), transparent 34%);
-}
-
-.control-back {
-  position: absolute;
-  top: 22px;
-  left: 24px;
-  z-index: 16;
-  height: 38px;
-  padding: 0 14px 0 11px;
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-  color: var(--text-primary);
-  font: 600 13px/1 var(--font-body);
-  border: 1px solid rgba(216, 242, 255, 0.28);
-  border-radius: 13px;
-  background:
-    linear-gradient(145deg, rgba(124, 211, 255, 0.14), rgba(9, 26, 55, 0.46)),
-    rgba(255, 255, 255, 0.05);
-  box-shadow: var(--glass-shadow), var(--glass-inner-shadow);
-  backdrop-filter: blur(28px) saturate(1.8);
-  -webkit-backdrop-filter: blur(28px) saturate(1.8);
-  cursor: pointer;
-  transition:
-    transform var(--transition-spring),
-    border-color var(--transition-base),
-    background var(--transition-base);
-}
-
-.control-back:hover {
-  transform: translateX(-3px);
-  border-color: rgba(226, 250, 255, 0.48);
-  background: var(--glass-bg-hover);
-}
-
-.control-back__icon {
-  width: 16px;
-  height: 16px;
-}
-
-.control-air-stage {
-  position: absolute;
-  inset: 0;
-  opacity: 0.8;
-}
-
-.control-titlebar {
-  position: relative;
-  z-index: 4;
-  margin-left: 118px;
-  min-height: 74px;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 18px;
-  padding: 14px 18px;
-  border: 1px solid rgba(216, 242, 255, 0.2);
-  border-radius: 22px;
-  background:
-    linear-gradient(120deg, rgba(94, 190, 255, 0.09), rgba(6, 22, 48, 0.34) 52%, rgba(163, 230, 53, 0.05)),
-    rgba(255, 255, 255, 0.035);
-  box-shadow: var(--glass-shadow), var(--glass-inner-shadow);
-  backdrop-filter: blur(30px) saturate(1.85);
-  -webkit-backdrop-filter: blur(30px) saturate(1.85);
-}
-
-.control-titlebar__info {
-  min-width: 220px;
-}
-
-.control-titlebar__eyebrow {
-  display: block;
-  margin-bottom: 3px;
-  font-family: var(--font-mono);
-  font-size: 10px;
-  color: rgba(163, 230, 53, 0.78);
-}
-
-.control-titlebar h2 {
-  margin: 0;
-  font-family: var(--font-display);
-  font-size: 22px;
-  color: var(--text-primary);
-}
-
-.control-titlebar__info > span:last-child {
-  display: block;
-  margin-top: 3px;
-  font-family: var(--font-mono);
-  font-size: 11px;
-  color: var(--text-secondary);
-}
-
-.control-titlebar__devices {
-  display: flex;
-  flex-wrap: wrap;
-  justify-content: flex-end;
-  gap: 8px;
-}
-
-.device-chip {
-  height: 32px;
-  max-width: 168px;
-  display: inline-flex;
-  align-items: center;
-  gap: 7px;
-  padding: 0 11px;
-  color: var(--text-secondary);
-  border: 1px solid rgba(216, 242, 255, 0.14);
-  border-radius: 999px;
-  background: rgba(255, 255, 255, 0.04);
-  cursor: pointer;
-  transition: all var(--transition-fast);
-}
-
-.device-chip span:last-child {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.device-chip--active,
-.device-chip:hover {
-  color: var(--text-primary);
-  border-color: rgba(163, 230, 53, 0.38);
-  background: rgba(163, 230, 53, 0.1);
-}
-
-.control-stage {
-  position: relative;
-  z-index: 3;
-  flex: 1;
-  min-height: 540px;
-  display: grid;
-  grid-template-columns: minmax(220px, 280px) minmax(320px, 1fr) minmax(280px, 360px);
-  align-items: center;
-  gap: 18px;
-}
-
-.control-column {
-  display: flex;
-  flex-direction: column;
-  gap: 14px;
-}
-
-.control-twin-stage {
-  position: relative;
-  min-height: 460px;
-  display: grid;
-  place-items: center;
-  opacity: 1;
-  transition: opacity 220ms ease 560ms;
-}
-
-.control-twin-stage--hidden {
-  opacity: 0;
-}
-
-.control-twin-stage::before {
-  content: '';
-  position: absolute;
-  width: min(52vw, 560px);
-  aspect-ratio: 1;
-  border-radius: 50%;
-  background:
-    radial-gradient(circle, rgba(34, 211, 238, 0.15), transparent 60%),
-    conic-gradient(from 120deg, transparent, rgba(163, 230, 53, 0.16), transparent, rgba(34, 211, 238, 0.14), transparent);
-  filter: blur(1px);
-  animation: twin-platform-turn 24s linear infinite;
-}
-
-.control-twin-stage__model {
-  position: relative;
-  z-index: 2;
-  width: min(50vw, 560px);
-  aspect-ratio: 1;
-  display: grid;
-  place-items: center;
-}
-
-.control-twin-stage__model :deep(.digital-twin),
-.control-twin-lite {
-  width: 100%;
-}
-
-.control-twin-lite {
-  position: relative;
-  aspect-ratio: 1;
-  display: grid;
-  place-items: center;
-  isolation: isolate;
-}
-
-.control-twin-lite__glow {
-  position: absolute;
-  inset: 10%;
-  z-index: -1;
-  border-radius: 50%;
-  background:
-    radial-gradient(circle, rgba(34, 211, 238, 0.22), transparent 56%),
-    radial-gradient(circle at 55% 64%, rgba(163, 230, 53, 0.12), transparent 50%);
-  filter: blur(18px);
-}
-
-.control-twin-lite__visual {
-  position: relative;
-  width: 100%;
-  display: grid;
-  place-items: center;
-}
-
-.control-twin-lite__image {
-  width: 100%;
-  height: auto;
-  display: block;
-  object-fit: contain;
-  filter: drop-shadow(0 26px 46px rgba(0, 0, 0, 0.26));
-  transform: none;
-}
-
-.control-twin-lite__screen {
-  position: absolute;
-  left: 50.24%;
-  top: 52.07%;
-  width: 33.84%;
-  min-width: 128px;
-  aspect-ratio: 1.31;
-  transform: translate(-50%, -50%);
-  display: block;
-  padding: 0;
-  overflow: hidden;
-  background: #0c1024;
-  border: 0;
-  border-radius: 3px;
-  box-shadow: inset 0 0 10px rgba(0, 0, 0, 0.42);
-  pointer-events: none;
-}
-
-.control-twin-lite__label {
-  position: absolute;
-  left: 50%;
-  bottom: 5%;
-  transform: translateX(-50%);
-  display: grid;
-  gap: 4px;
-  justify-items: center;
-  width: max-content;
-  max-width: 80%;
-  padding: 8px 12px;
-  border: 1px solid rgba(216, 242, 255, 0.12);
-  border-radius: 999px;
-  color: var(--text-secondary);
-  background: rgba(4, 18, 40, 0.24);
-  backdrop-filter: blur(18px);
-  -webkit-backdrop-filter: blur(18px);
-}
-
-.control-twin-lite__label span {
-  max-width: 18em;
-  overflow: hidden;
-  color: var(--text-primary);
-  font: 600 12px/1 var(--font-body);
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.control-twin-lite__label small {
-  color: rgba(163, 230, 53, 0.72);
-  font: 600 10px/1 var(--font-mono);
-}
-
-.control-twin-lite--offline {
-  filter: grayscale(0.65);
-  opacity: 0.66;
-}
-
-.control-panel {
-  background:
-    linear-gradient(145deg, rgba(102, 198, 255, 0.1), rgba(5, 22, 49, 0.36)),
-    rgba(255, 255, 255, 0.035);
-  border-color: rgba(216, 242, 255, 0.22);
-}
-
-.control-panel--compact .control-panel__body {
-  padding: 14px;
-}
-
-.air-legend {
-  display: grid;
-  grid-template-columns: 1fr;
-  gap: 8px;
-}
-
-.air-legend__item {
-  display: grid;
-  grid-template-columns: 12px minmax(48px, auto) 1fr;
-  align-items: center;
-  gap: 8px;
-  padding: 8px 9px;
-  border: 1px solid rgba(216, 242, 255, 0.12);
-  border-radius: 12px;
-  background: rgba(255, 255, 255, 0.045);
-}
-
-.air-legend__dot {
-  width: 9px;
-  height: 9px;
-  border-radius: 50%;
-  box-shadow: 0 0 12px currentColor;
-}
-
-.air-legend__label {
-  font-family: var(--font-mono);
-  font-size: 11px;
-  color: var(--text-primary);
-}
-
-.air-legend__name {
-  font-size: 12px;
-  color: var(--text-secondary);
-  text-align: right;
-}
-
-.twin-metrics {
-  display: grid;
-  gap: 8px;
-}
-
-.twin-metric {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-  padding: 10px 12px;
-  border-radius: 13px;
-  background: rgba(255, 255, 255, 0.045);
-  border: 1px solid rgba(216, 242, 255, 0.12);
-}
-
-.twin-metric span {
-  color: var(--text-secondary);
-  font-size: 12px;
-}
-
-.twin-metric strong {
-  font-family: var(--font-mono);
-  font-size: 13px;
-  color: var(--text-primary);
-}
-
-.control-log-dock {
-  position: relative;
-  z-index: 4;
-}
-
-.control-log-dock .control-panel__body {
-  padding: 12px 16px 16px;
-}
-
-.control-twin-launch {
-  --twin-size: 100%;
-
-  position: fixed;
-  z-index: 999;
-  pointer-events: none;
-  transition:
-    left 760ms cubic-bezier(0.2, 0.9, 0.18, 1),
-    top 760ms cubic-bezier(0.2, 0.9, 0.18, 1),
-    width 760ms cubic-bezier(0.2, 0.9, 0.18, 1),
-    height 760ms cubic-bezier(0.2, 0.9, 0.18, 1),
-    opacity 220ms ease 560ms,
-    filter 760ms ease;
-  filter: drop-shadow(0 24px 54px rgba(34, 211, 238, 0.26));
-}
-
-.control-twin-launch--settled {
-  opacity: 0;
-  filter: drop-shadow(0 10px 24px rgba(34, 211, 238, 0.1));
-}
-
-@keyframes twin-platform-turn {
-  from { transform: rotate(0deg); }
-  to { transform: rotate(360deg); }
-}
-
-@media (max-width: 1180px) {
-  .control-stage {
-    grid-template-columns: 1fr;
-  }
-
-  .control-column--left,
-  .control-column--right {
-    display: grid;
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
-
-  .control-titlebar {
-    margin-left: 0;
-    padding-left: 108px;
-  }
-}
-
-@media (max-width: 760px) {
-  .control-page {
-    padding: 18px;
-  }
-
-  .control-back {
-    position: relative;
-    top: auto;
-    left: auto;
-    align-self: flex-start;
-  }
-
-  .control-titlebar {
-    margin-left: 0;
-    padding: 14px;
-    flex-direction: column;
-    align-items: stretch;
-  }
-
-  .control-titlebar__devices {
-    justify-content: flex-start;
-  }
-
-  .control-column--left,
-  .control-column--right {
-    grid-template-columns: 1fr;
-  }
-
-  .control-twin-stage {
-    min-height: 320px;
-  }
-
-  .control-twin-stage__model {
-    width: min(78vw, 320px);
-  }
-}
-</style>
+<style scoped src="./styles/Control.css"></style>

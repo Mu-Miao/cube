@@ -7,7 +7,9 @@ from typing import Any
 
 from fastapi import WebSocket
 
+from app.config import settings
 from app.services.auth_service import decode_access_token
+from app.services.redis_event_bus import redis_event_bus
 
 
 class WebSocketManager:
@@ -24,19 +26,30 @@ class WebSocketManager:
         # 所有活跃连接：{websocket: {"user_id": int, "device_ids": set()}}
         self.active_connections: dict[WebSocket, dict[str, Any]] = {}
 
-    async def connect(self, websocket: WebSocket) -> None:
+    async def connect(self, websocket: WebSocket) -> bool:
         """
         接受 WebSocket 连接
         连接建立后客户端需发送认证消息
         """
+        if len(self.active_connections) >= settings.WS_MAX_CONNECTIONS:
+            await websocket.close(code=1013, reason="连接数已达上限")
+            return False
         await websocket.accept()
         self.active_connections[websocket] = {"user_id": None, "device_ids": set()}
+        return True
 
     def disconnect(self, websocket: WebSocket) -> None:
         """
         断开 WebSocket 连接，清理相关资源
         """
         self.active_connections.pop(websocket, None)
+
+    def get_authenticated_user_id(self, websocket: WebSocket) -> int | None:
+        connection = self.active_connections.get(websocket)
+        if not connection:
+            return None
+        user_id = connection.get("user_id")
+        return user_id if isinstance(user_id, int) else None
 
     async def authenticate(self, websocket: WebSocket, token: str) -> bool:
         """
@@ -71,18 +84,30 @@ class WebSocketManager:
         }))
         return True
 
+    async def send_subscribe_result(
+        self,
+        websocket: WebSocket,
+        code: int,
+        message: str,
+    ) -> None:
+        await websocket.send_text(json.dumps({
+            "type": "subscribe_result",
+            "code": code,
+            "message": message,
+        }))
+
     async def subscribe(self, websocket: WebSocket, device_id: str) -> None:
         """
         客户端订阅设备数据推送
         订阅后该设备的所有传感器数据都会推送给此客户端
         """
-        if websocket in self.active_connections:
-            self.active_connections[websocket]["device_ids"].add(device_id)
-            await websocket.send_text(json.dumps({
-                "type": "subscribe_result",
-                "code": 0,
-                "message": "ok",
-            }))
+        connection = self.active_connections.get(websocket)
+        if not connection or self.get_authenticated_user_id(websocket) is None:
+            await self.send_subscribe_result(websocket, 1002, "请先完成认证")
+            return
+
+        connection["device_ids"].add(device_id)
+        await self.send_subscribe_result(websocket, 0, "ok")
 
     async def broadcast_sensor_data(self, device_id: str, data: dict) -> None:
         """
@@ -94,7 +119,7 @@ class WebSocketManager:
             "data": {"device_id": device_id, **data},
             "timestamp": int(__import__("time").time() * 1000),
         })
-        await self._send_to_subscribers(device_id, message)
+        await self._broadcast(device_id, message)
 
     async def broadcast_device_status(self, device_id: str, status: str) -> None:
         """
@@ -106,7 +131,7 @@ class WebSocketManager:
             "data": {"device_id": device_id, "status": status},
             "timestamp": int(__import__("time").time() * 1000),
         })
-        await self._send_to_subscribers(device_id, message)
+        await self._broadcast(device_id, message)
 
     async def broadcast_device_heartbeat(self, device_id: str, status: dict) -> None:
         """
@@ -118,7 +143,7 @@ class WebSocketManager:
             "data": {"device_id": device_id, **status},
             "timestamp": int(__import__("time").time() * 1000),
         })
-        await self._send_to_subscribers(device_id, message)
+        await self._broadcast(device_id, message)
 
     async def broadcast_control_result(self, device_id: str, command: str, value: str, result: str) -> None:
         """
@@ -134,7 +159,7 @@ class WebSocketManager:
             },
             "timestamp": int(__import__("time").time() * 1000),
         })
-        await self._send_to_subscribers(device_id, message)
+        await self._broadcast(device_id, message)
 
     async def broadcast_alert(self, device_id: str, alerts: list[dict]) -> None:
         """向订阅了某设备的客户端广播告警"""
@@ -143,7 +168,7 @@ class WebSocketManager:
             "data": {"device_id": device_id, "alerts": alerts},
             "timestamp": int(__import__("time").time() * 1000),
         })
-        await self._send_to_subscribers(device_id, message)
+        await self._broadcast(device_id, message)
 
     async def _send_to_subscribers(self, device_id: str, message: str) -> None:
         """
@@ -160,6 +185,14 @@ class WebSocketManager:
         # 清理断开的连接
         for ws in disconnected:
             self.disconnect(ws)
+
+    async def broadcast_external(self, device_id: str, message: str) -> None:
+        """只发送到当前 Worker，供 Redis 订阅端调用，避免重复发布。"""
+        await self._send_to_subscribers(device_id, message)
+
+    async def _broadcast(self, device_id: str, message: str) -> None:
+        await self._send_to_subscribers(device_id, message)
+        await redis_event_bus.publish(device_id, message)
 
 
 # 全局单例实例

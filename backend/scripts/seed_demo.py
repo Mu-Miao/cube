@@ -132,7 +132,8 @@ async def _upsert_device(
 
     device.device_name = demo_device.name
     device.status = demo_device.status
-    device.token = token
+    from app.services.device_credentials import HASH_PREFIX, hash_secret
+    device.token_hash = f"{HASH_PREFIX}{hash_secret(token)}"
     device.chip_model = demo_device.chip_model
     device.firmware_version = demo_device.firmware_version
     device.bound_user_id = owner_id

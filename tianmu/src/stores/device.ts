@@ -1,4 +1,4 @@
-// src/store/device.ts
+// src/stores/device.ts
 // 设备状态管理（Pinia Store）
 // 管理设备列表、选中设备、设备状态更新
 // 供 Dashboard 和控制面板页面共享设备状态

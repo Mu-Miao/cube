@@ -2,7 +2,8 @@
 # 用户认证接口
 # 提供：用户注册、登录
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Cookie, Depends, HTTPException, Request, Response
+from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -16,12 +17,35 @@ from app.services.auth_service import (
     verify_password,
     create_access_token,
 )
+from app.models.user import User
+from app.services.rate_limit import auth_rate_limiter
+from app.services.refresh_token_service import (
+    issue_refresh_token,
+    revoke_refresh_token,
+    rotate_refresh_token,
+)
 
 router = APIRouter(prefix="/auth", tags=["用户认证"])
 
 
+def _set_refresh_cookie(response: Response, token: str) -> None:
+    response.set_cookie(
+        key=settings.REFRESH_COOKIE_NAME,
+        value=token,
+        max_age=settings.REFRESH_TOKEN_EXPIRE_DAYS * 86400,
+        httponly=True,
+        secure=settings.REFRESH_COOKIE_SECURE or not settings.DEBUG,
+        samesite="lax",
+        path="/api/v1/auth",
+    )
+
+
 @router.post("/register", response_model=ApiResponse[UserInfo])
-async def register(user_data: UserRegister, db: AsyncSession = Depends(get_db)):
+async def register(
+    user_data: UserRegister,
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+):
     """
     用户注册接口
     POST /api/v1/auth/register
@@ -33,6 +57,9 @@ async def register(user_data: UserRegister, db: AsyncSession = Depends(get_db)):
 
     错误码：2002 = 用户名已存在
     """
+    client_ip = request.client.host if request.client else "unknown"
+    await auth_rate_limiter.check(f"register:{client_ip}", limit=3)
+
     # 检查用户名是否已存在
     existing = await get_user_by_username(db, user_data.username)
     if existing:
@@ -51,7 +78,12 @@ async def register(user_data: UserRegister, db: AsyncSession = Depends(get_db)):
 
 
 @router.post("/login", response_model=ApiResponse[TokenResponse])
-async def login(user_data: UserLogin, db: AsyncSession = Depends(get_db)):
+async def login(
+    user_data: UserLogin,
+    request: Request,
+    response: Response,
+    db: AsyncSession = Depends(get_db),
+):
     """
     用户登录接口
     POST /api/v1/auth/login
@@ -63,6 +95,12 @@ async def login(user_data: UserLogin, db: AsyncSession = Depends(get_db)):
 
     错误码：2003 = 密码错误
     """
+    client_ip = request.client.host if request.client else "unknown"
+    await auth_rate_limiter.check(
+        f"login:{client_ip}",
+        limit=5,
+    )
+
     # 查询用户
     user = await get_user_by_username(db, user_data.username)
     if not user:
@@ -70,14 +108,20 @@ async def login(user_data: UserLogin, db: AsyncSession = Depends(get_db)):
 
     # 验证密码
     if not verify_password(user_data.password, user.password):
-        raise HTTPException(status_code=401, detail="密码错误")
+        raise HTTPException(status_code=401, detail="用户名或密码错误")
 
     # 检查用户是否被禁用
     if not user.is_active:
         raise HTTPException(status_code=403, detail="账号已被禁用")
 
     # 生成 JWT Token
-    access_token = create_access_token({"user_id": user.id, "username": user.username})
+    access_token = create_access_token({
+        "user_id": user.id,
+        "username": user.username,
+        "role": user.role,
+    })
+    refresh_token = await issue_refresh_token(db, user.id)
+    _set_refresh_cookie(response, refresh_token)
     return ApiResponse(
         data=TokenResponse(
             access_token=access_token,
@@ -85,3 +129,44 @@ async def login(user_data: UserLogin, db: AsyncSession = Depends(get_db)):
             expires_in=settings.ACCESS_TOKEN_EXPIRE_MINUTES * 60,
         )
     )
+
+
+@router.post("/refresh", response_model=ApiResponse[TokenResponse])
+async def refresh_access_token(
+    response: Response,
+    refresh_token: str | None = Cookie(default=None, alias=settings.REFRESH_COOKIE_NAME),
+    db: AsyncSession = Depends(get_db),
+):
+    if not refresh_token:
+        raise HTTPException(status_code=401, detail="登录已过期")
+    rotated = await rotate_refresh_token(db, refresh_token)
+    if rotated is None:
+        response.delete_cookie(settings.REFRESH_COOKIE_NAME, path="/api/v1/auth")
+        raise HTTPException(status_code=401, detail="登录已过期")
+    user_id, replacement = rotated
+    user = (
+        await db.execute(select(User).where(User.id == user_id, User.is_active.is_(True)))
+    ).scalar_one_or_none()
+    if user is None:
+        raise HTTPException(status_code=401, detail="用户不存在或已被禁用")
+    _set_refresh_cookie(response, replacement)
+    access_token = create_access_token({
+        "user_id": user.id,
+        "username": user.username,
+        "role": user.role,
+    })
+    return ApiResponse(data=TokenResponse(
+        access_token=access_token,
+        expires_in=settings.ACCESS_TOKEN_EXPIRE_MINUTES * 60,
+    ))
+
+
+@router.post("/logout", response_model=ApiResponse)
+async def logout(
+    response: Response,
+    refresh_token: str | None = Cookie(default=None, alias=settings.REFRESH_COOKIE_NAME),
+    db: AsyncSession = Depends(get_db),
+):
+    await revoke_refresh_token(db, refresh_token)
+    response.delete_cookie(settings.REFRESH_COOKIE_NAME, path="/api/v1/auth")
+    return ApiResponse(message="已退出登录")

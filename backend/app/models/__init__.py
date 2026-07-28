@@ -8,3 +8,5 @@ from app.models.sensor_data import SensorData  # noqa: F401
 from app.models.operation_log import OperationLog  # noqa: F401
 from app.models.voice_log import VoiceLog  # noqa: F401
 from app.models.ota_log import OtaLog  # noqa: F401
+from app.models.device_pairing_code import DevicePairingCode  # noqa: F401
+from app.models.refresh_token import RefreshToken  # noqa: F401

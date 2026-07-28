@@ -1,5 +1,3 @@
-version: "3.8"
-
 services:
   backend:
     build: .
@@ -7,8 +5,21 @@ services:
       - "8000:8000"
     volumes:
       - ./data:/app/data
+      - ${MQTT_CA_CERT_HOST_PATH:?set MQTT_CA_CERT_HOST_PATH}:/run/secrets/mqtt_ca.crt:ro
     environment:
-      - DEBUG=false
-      - SECRET_KEY=change-me-in-production
-      - MQTT_BROKER_URL=broker.emqx.io
+      DEBUG: "false"
+      WEB_CONCURRENCY: ${WEB_CONCURRENCY:-4}
+      SECRET_KEY: ${SECRET_KEY:?set SECRET_KEY}
+      DATABASE_URL: ${DATABASE_URL:?set external PostgreSQL DATABASE_URL}
+      REDIS_URL: ${REDIS_URL:?set external Redis REDIS_URL}
+      CORS_ORIGINS: ${CORS_ORIGINS:?set CORS_ORIGINS JSON list}
+      REFRESH_COOKIE_SECURE: "true"
+      DEMO_MODE: "false"
+      MQTT_BROKER_URL: ${MQTT_BROKER_URL:?set private MQTT_BROKER_URL}
+      MQTT_BROKER_PORT: "8883"
+      MQTT_USERNAME: ${MQTT_USERNAME:?set MQTT_USERNAME}
+      MQTT_PASSWORD: ${MQTT_PASSWORD:?set MQTT_PASSWORD}
+      MQTT_TLS: "true"
+      MQTT_CA_CERT: /run/secrets/mqtt_ca.crt
+      FIRMWARE_PUBLIC_BASE_URL: ${FIRMWARE_PUBLIC_BASE_URL:?set public HTTPS base URL}
     restart: unless-stopped

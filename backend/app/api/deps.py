@@ -9,6 +9,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.session import get_db
 from app.models.user import User
+from app.models.device import Device
+from app.services.device_access import find_owned_device
 from app.services.auth_service import decode_access_token, get_user_by_username
 
 # HTTP Bearer Token 认证方案
@@ -69,3 +71,17 @@ async def get_current_admin(
             detail="需要管理员权限",
         )
     return current_user
+
+
+async def require_owned_device(
+    device_id: str,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+) -> Device:
+    device = await find_owned_device(db, current_user.id, device_id)
+    if device is None:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="无权访问该设备",
+        )
+    return device

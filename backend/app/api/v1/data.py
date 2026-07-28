@@ -2,30 +2,32 @@
 # 数据接口
 # 提供：传感器数据上传（设备侧）、最新数据查询（用户侧）
 
-import random
 import time
 from datetime import datetime, timedelta, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, Query
-from sqlalchemy import Integer, cast, func, select
+from sqlalchemy import Integer, cast, extract, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.api.deps import get_current_user
+from app.api.deps import require_owned_device
 from app.db.session import get_db
 from app.models.device import Device
 from app.models.sensor_data import SensorData
-from app.models.user import User
 from app.schemas.base import ApiResponse
 from app.schemas.data import DeviceDataReport, DataUploadAck, SensorDataLatest, SensorDataHistoryItem
 from app.services.alert_service import check_alerts
 from app.services.control_status import normalize_control_status
+from app.services.device_credentials import verify_device_token
+from app.services.demo_data_service import (
+    DEMO_REFRESH_INTERVAL_SECONDS,
+    build_demo_sensor_record,
+    is_live_demo_device,
+    timestamp_age_seconds,
+)
 from app.utils.timezone import shanghai_isoformat
 from app.websocket.manager import ws_manager
 
 router = APIRouter(prefix="/data", tags=["传感器数据"])
-
-DEMO_REFRESH_INTERVAL_SECONDS = 4
-
 
 def _record_control_status(record: SensorData) -> dict:
     return {
@@ -37,52 +39,6 @@ def _record_control_status(record: SensorData) -> dict:
         "screen_brightness": record.screen_brightness,
         "focus_mode": bool(record.focus_mode) if record.focus_mode is not None else None,
     }
-
-
-def _is_live_demo_device(device: Device) -> bool:
-    return device.device_id.startswith("DEMO-CUBE-") and device.status == "online"
-
-
-def _timestamp_age_seconds(timestamp: datetime) -> float:
-    now = datetime.now(timezone.utc)
-    if timestamp.tzinfo is None:
-        timestamp = timestamp.replace(tzinfo=timezone.utc)
-    return (now - timestamp).total_seconds()
-
-
-def _jitter(value: float | int | None, fallback: float, spread: float, low: float, high: float, digits: int = 1) -> float:
-    base = fallback if value is None else float(value)
-    next_value = max(low, min(high, base + random.uniform(-spread, spread)))
-    return round(next_value, digits)
-
-
-def _build_demo_sensor_record(device_id: str, previous: SensorData | None = None) -> SensorData:
-    is_risk_demo = device_id.endswith("-002")
-    gas_value = 0.8 if is_risk_demo else 0
-    mold_low = 2 if is_risk_demo else 0
-    mold_high = 3 if is_risk_demo else 1
-
-    return SensorData(
-        device_id=device_id,
-        temperature=_jitter(previous.temperature if previous else None, 25, 0.35, 22, 31),
-        humidity=_jitter(previous.humidity if previous else None, 58, 0.8, 40, 78),
-        illuminance=_jitter(previous.illuminance if previous else None, 450, 18, 160, 720, 0),
-        aqi=_jitter(previous.aqi if previous else None, 65, 4, 30, 165, 0),
-        pm25=_jitter(previous.pm25 if previous else None, 24, 2.5, 8, 92),
-        tvoc=_jitter(previous.tvoc if previous else None, 160, 12, 70, 980, 0),
-        eco2=_jitter(previous.eco2 if previous else None, 620, 25, 380, 1850, 0),
-        mold_risk=round(_jitter(previous.mold_risk if previous else None, mold_low, 0.4, mold_low, mold_high, 0)),
-        gas=gas_value,
-        wifi_rssi=round(_jitter(previous.wifi_rssi if previous else None, -46, 2, -68, -34, 0)),
-        focus_mode=previous.focus_mode if previous else False,
-        light=previous.light if previous else False,
-        light_brightness=previous.light_brightness if previous else 80,
-        color_temperature=previous.color_temperature if previous else 3000,
-        wechat_notify=previous.wechat_notify if previous else True,
-        auto_screen_brightness=previous.auto_screen_brightness if previous else False,
-        screen_brightness=previous.screen_brightness if previous else 60,
-        timestamp=datetime.now(timezone.utc),
-    )
 
 
 @router.post("/upload", response_model=DataUploadAck)
@@ -107,7 +63,7 @@ async def upload_sensor_data(
     result = await db.execute(select(Device).where(Device.device_id == payload.device_id))
     device = result.scalar_one_or_none()
 
-    if not device or device.token != payload.token:
+    if not verify_device_token(device, payload.token):
         raise HTTPException(status_code=401, detail="无效的设备凭证")
 
     control_status = normalize_control_status(payload.status)
@@ -177,7 +133,7 @@ async def upload_sensor_data(
 @router.get("/{device_id}/latest", response_model=ApiResponse[SensorDataLatest])
 async def get_latest_sensor_data(
     device_id: str,
-    current_user: User = Depends(get_current_user),
+    device: Device = Depends(require_owned_device),
     db: AsyncSession = Depends(get_db),
 ):
     """
@@ -192,17 +148,6 @@ async def get_latest_sensor_data(
 
     错误码：3002 - 设备未绑定
     """
-    # 验证设备绑定关系
-    device_result = await db.execute(
-        select(Device).where(
-            Device.device_id == device_id,
-            Device.bound_user_id == current_user.id,
-        )
-    )
-    device = device_result.scalar_one_or_none()
-    if not device:
-        return ApiResponse(code=3002, message="设备未绑定", data=None)
-
     # 查询最新传感器数据（按时间戳降序，取第一条）
     data_result = await db.execute(
         select(SensorData)
@@ -212,8 +157,8 @@ async def get_latest_sensor_data(
     )
     record = data_result.scalar_one_or_none()
 
-    if not record and _is_live_demo_device(device):
-        record = _build_demo_sensor_record(device_id)
+    if not record and is_live_demo_device(device):
+        record = build_demo_sensor_record(device_id)
         db.add(record)
         device.last_seen = record.timestamp
         await db.flush()
@@ -221,8 +166,8 @@ async def get_latest_sensor_data(
     if not record:
         return ApiResponse(code=0, message="暂无数据", data=None)
 
-    if _is_live_demo_device(device) and _timestamp_age_seconds(record.timestamp) >= DEMO_REFRESH_INTERVAL_SECONDS:
-        record = _build_demo_sensor_record(device_id, record)
+    if is_live_demo_device(device) and timestamp_age_seconds(record.timestamp) >= DEMO_REFRESH_INTERVAL_SECONDS:
+        record = build_demo_sensor_record(device_id, record)
         db.add(record)
         device.last_seen = record.timestamp
         await db.flush()
@@ -265,7 +210,7 @@ async def get_sensor_data_history(
     device_id: str,
     hours: int = Query(default=24, ge=1, le=168, description="查询最近N小时的数据"),
     limit: int = Query(default=100, ge=1, le=500, description="返回条数限制"),
-    current_user: User = Depends(get_current_user),
+    _device: Device = Depends(require_owned_device),
     db: AsyncSession = Depends(get_db),
 ):
     """
@@ -281,17 +226,6 @@ async def get_sensor_data_history(
 
     错误码：3002 - 设备未绑定
     """
-    # 验证设备绑定关系
-    device_result = await db.execute(
-        select(Device).where(
-            Device.device_id == device_id,
-            Device.bound_user_id == current_user.id,
-        )
-    )
-    device = device_result.scalar_one_or_none()
-    if not device:
-        return ApiResponse(code=3002, message="设备未绑定", data=None)
-
     # 计算时间范围
     since = datetime.now(timezone.utc) - timedelta(hours=hours)
 
@@ -330,7 +264,7 @@ async def get_sensor_data_history(
 async def get_sensor_data_trend(
     device_id: str,
     hours: int = Query(default=1, description="趋势范围：1、6、24 或 168 小时"),
-    current_user: User = Depends(get_current_user),
+    _device: Device = Depends(require_owned_device),
     db: AsyncSession = Depends(get_db),
 ):
     """按时间桶聚合范围内的全部上传数据，供趋势图展示。"""
@@ -344,17 +278,11 @@ async def get_sensor_data_trend(
     if bucket_seconds is None:
         raise HTTPException(status_code=422, detail="hours 仅支持 1、6、24、168")
 
-    device_result = await db.execute(
-        select(Device).where(
-            Device.device_id == device_id,
-            Device.bound_user_id == current_user.id,
-        )
-    )
-    if device_result.scalar_one_or_none() is None:
-        return ApiResponse(code=3002, message="设备未绑定", data=None)
-
     since = datetime.now(timezone.utc) - timedelta(hours=hours)
-    epoch_seconds = cast(func.strftime("%s", SensorData.timestamp), Integer)
+    if db.get_bind().dialect.name == "postgresql":
+        epoch_seconds = cast(extract("epoch", SensorData.timestamp), Integer)
+    else:
+        epoch_seconds = cast(func.strftime("%s", SensorData.timestamp), Integer)
     bucket = cast(epoch_seconds / bucket_seconds, Integer)
     data_result = await db.execute(
         select(

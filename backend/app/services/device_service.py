@@ -50,6 +50,24 @@ async def refresh_stale_device_statuses(db: AsyncSession, devices: list[Device])
     return stale_count
 
 
+async def refresh_all_stale_device_statuses(db: AsyncSession) -> list[str]:
+    result = await db.execute(select(Device).where(Device.status == "online"))
+    devices = list(result.scalars().all())
+    stale_device_ids = [
+        device.device_id
+        for device in devices
+        if is_device_stale(device)
+    ]
+
+    if stale_device_ids:
+        for device in devices:
+            if device.device_id in stale_device_ids:
+                device.status = "offline"
+        await db.flush()
+
+    return stale_device_ids
+
+
 async def unbind_device(db: AsyncSession, device_id: str, user_id: int) -> tuple[int, str]:
     """
     解绑设备

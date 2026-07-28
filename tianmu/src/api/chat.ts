@@ -3,6 +3,7 @@
 // API Key 安全存储在后端，前端不接触密钥
 
 import { isDemoMode } from '@/utils/demo'
+import { getAccessToken } from '@/api/session'
 
 export interface ChatMessage {
   role: 'system' | 'user' | 'assistant'
@@ -32,7 +33,7 @@ export function streamChat(
     return controller
   }
 
-  const token = localStorage.getItem('token') || ''
+  const token = getAccessToken()
 
   // 只发送 user/assistant 消息给后端（后端自行拼接 system 提示词）
   const filteredMessages = messages

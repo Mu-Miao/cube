@@ -28,7 +28,8 @@ class Device(BaseModel):
 
     # 设备握手后获得的临时 Token，用于设备侧 API 认证
     # Token 过期后设备需重新握手
-    token: Mapped[Optional[str]] = mapped_column(String(128), nullable=True)
+    token_hash: Mapped[Optional[str]] = mapped_column("token", String(128), nullable=True)
+    token_expires_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
 
     # 设备在线状态：online / offline
     # 通过心跳包维护，超过 90 秒未收到心跳自动标记为 offline

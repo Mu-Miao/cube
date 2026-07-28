@@ -4,7 +4,8 @@
 // 导航守卫：未登录时拦截需要认证的路由
 
 import { createRouter, createWebHistory } from 'vue-router'
-import { useAuthStore } from '@/store/auth'
+import type { RouteLocationNormalized } from 'vue-router'
+import { useAuthStore } from '@/stores/auth'
 import { isDemoMode } from '@/utils/demoMode'
 import { routeComponentLoaders } from './routeLoaders'
 
@@ -16,14 +17,14 @@ const router = createRouter({
     {
       path: '/login',
       name: 'login',
-      component: () => import('@/versions/public/App.vue'),
+      component: () => import('@/views/Login.vue'),
       meta: { requiresAuth: false },
     },
     // 注册页（无需认证）
     {
       path: '/register',
       name: 'register',
-      component: () => import('@/versions/public/App.vue'),
+      component: () => import('@/views/Register.vue'),
       meta: { requiresAuth: false },
     },
     {
@@ -113,20 +114,10 @@ const router = createRouter({
 })
 
 // 全局导航守卫：在路由跳转前执行
-router.beforeEach((to) => {
+export function authNavigationGuard(to: RouteLocationNormalized) {
   const authStore = useAuthStore()
   // 与 API、WebSocket 共用同一套演示模式判断，避免状态不一致。
   const isDemo = isDemoMode()
-  const storedToken = localStorage.getItem('token')
-
-  if (!authStore.isLoggedIn && storedToken) {
-    authStore.setAuth({
-      token: storedToken,
-      username: localStorage.getItem('username') || '用户',
-      role: (localStorage.getItem('role') as 'user' | 'admin') || 'user',
-    })
-  }
-
   // 需要认证但用户未登录：重定向到登录页
   if (to.meta.requiresAuth && !authStore.isLoggedIn && !isDemo) {
     return { name: 'login' }
@@ -136,6 +127,8 @@ router.beforeEach((to) => {
   if ((to.name === 'login' || to.name === 'register') && authStore.isLoggedIn) {
     return { path: '/public' }
   }
-})
+}
+
+router.beforeEach(authNavigationGuard)
 
 export default router

@@ -1,0 +1,246 @@
+:root {
+  --text-primary: #1d1d1f;
+  --text-secondary: #6e7480;
+  --text-tertiary: #9aa1ac;
+  --accent-blue: #0071e3;
+  --accent-green: #34c759;
+  --accent-amber: #ff9f0a;
+  --surface-line: rgba(30, 45, 72, 0.1);
+  --radius-xl: 22px;
+  --radius-2xl: 30px;
+  --sidebar-width: 224px;
+  font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "SF Pro Display", "PingFang SC", "Helvetica Neue", Arial, sans-serif;
+  color: var(--text-primary);
+  background: #f7f8fb;
+  font-synthesis: none;
+  text-rendering: geometricPrecision;
+  -webkit-font-smoothing: antialiased;
+}
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  min-width: 320px;
+  min-height: 100vh;
+}
+
+button,
+input {
+  font: inherit;
+}
+
+button {
+  cursor: pointer;
+}
+
+svg {
+  width: 1em;
+  height: 1em;
+  fill: currentColor;
+}
+
+.text-button {
+  appearance: none;
+  border: 0;
+  background: transparent;
+  color: var(--text-secondary);
+  font: inherit;
+  font-weight: 700;
+  padding: 0;
+}
+
+.text-button:hover {
+  color: var(--text-primary);
+}
+
+.app-shell {
+  min-height: 100vh;
+  display: grid;
+  grid-template-columns: var(--sidebar-width) minmax(0, 1fr);
+}
+
+.sidebar {
+  position: sticky;
+  top: 0;
+  height: 100vh;
+  padding: 46px 16px 22px;
+  border-right: 1px solid rgba(30, 45, 72, 0.08);
+  background: rgba(255, 255, 255, 0.42);
+  backdrop-filter: blur(30px) saturate(1.35);
+  -webkit-backdrop-filter: blur(30px) saturate(1.35);
+  display: flex;
+  flex-direction: column;
+}
+
+.window-dots {
+  display: flex;
+  gap: 8px;
+  margin: 6px 0 30px 8px;
+}
+
+.window-dots span {
+  width: 12px;
+  aspect-ratio: 1;
+  border-radius: 50%;
+  background: #ff5f57;
+}
+
+.window-dots span:nth-child(2) {
+  background: #ffbd2e;
+}
+
+.window-dots span:nth-child(3) {
+  background: #28c840;
+}
+
+.brand {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 0 8px 28px;
+  font-weight: 800;
+}
+
+.brand__mark {
+  width: 36px;
+  aspect-ratio: 1;
+  display: grid;
+  place-items: center;
+  border-radius: 13px;
+  padding: 3px;
+  object-fit: contain;
+  color: var(--accent-blue);
+  background: rgba(255, 255, 255, 0.76);
+  border: 1px solid rgba(30, 45, 72, 0.1);
+  box-shadow: 0 12px 28px rgba(0, 113, 227, 0.11);
+}
+
+.nav-list {
+  display: grid;
+  gap: 10px;
+}
+
+.nav-item,
+.settings-button {
+  appearance: none;
+  border: 1px solid transparent;
+  width: 100%;
+  min-height: 54px;
+  padding: 0 14px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  border-radius: 18px;
+  color: var(--text-secondary);
+  background: transparent;
+  font-weight: 700;
+  text-align: left;
+}
+
+.nav-item__icon,
+.settings-button span:first-child {
+  width: 22px;
+  display: grid;
+  place-items: center;
+  color: currentColor;
+  font-size: 20px;
+}
+
+.nav-item--active,
+.settings-button--active {
+  color: var(--accent-blue);
+  border-color: rgba(0, 113, 227, 0.12);
+  background:
+    linear-gradient(145deg, rgba(255, 255, 255, 0.86), rgba(241, 247, 255, 0.62)),
+    rgba(255, 255, 255, 0.62);
+  box-shadow: 0 14px 36px rgba(0, 113, 227, 0.1);
+}
+
+.settings-button {
+  margin-top: auto;
+}
+
+.workspace {
+  min-width: 0;
+  padding: 0 clamp(24px, 4vw, 44px) 54px;
+}
+
+.topbar {
+  height: 72px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  border-bottom: 1px solid rgba(30, 45, 72, 0.08);
+}
+
+.topbar__date {
+  margin: 0;
+  color: var(--text-tertiary);
+  font-size: 13px;
+}
+
+.topbar strong {
+  font-size: 17px;
+}
+
+.topbar__actions {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.app-notice {
+  position: sticky;
+  top: 10px;
+  z-index: 10;
+  margin: 0 0 18px;
+  padding: 12px 16px;
+  border: 1px solid rgba(48, 209, 88, 0.22);
+  border-radius: 16px;
+  color: rgba(210, 255, 220, 0.92);
+  background: rgba(20, 68, 38, 0.38);
+  backdrop-filter: blur(18px);
+}
+
+.app-notice--error {
+  border-color: rgba(255, 69, 58, 0.28);
+  color: rgba(255, 214, 214, 0.94);
+  background: rgba(84, 28, 28, 0.42);
+}
+
+.icon-button,
+.profile-button {
+  appearance: none;
+  border: 1px solid rgba(30, 45, 72, 0.1);
+  height: 42px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.72);
+  color: var(--text-primary);
+}
+
+.icon-button {
+  width: 42px;
+  display: grid;
+  place-items: center;
+  font-size: 19px;
+}
+
+.profile-button {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 0 14px 0 4px;
+}
+
+.profile-button span {
+  width: 34px;
+  aspect-ratio: 1;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  background: #e9e7ff;
+  color: #3b31a8;
+  font-weight: 800;
+}

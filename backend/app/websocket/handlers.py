@@ -1,8 +1,19 @@
 import json
 
 from fastapi import WebSocket
+from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.db.session import async_session_factory
+from app.services.device_access import find_owned_device
 from app.websocket.manager import ws_manager
+
+
+async def can_user_subscribe_to_device(
+    db: AsyncSession,
+    user_id: int,
+    device_id: str,
+) -> bool:
+    return await find_owned_device(db, user_id, device_id) is not None
 
 
 async def handle_ws_message(websocket: WebSocket, raw: str) -> None:
@@ -32,6 +43,19 @@ async def _handle_auth(websocket: WebSocket, msg_data: dict, msg: dict) -> None:
 
 async def _handle_subscribe(websocket: WebSocket, msg_data: dict, msg: dict) -> None:
     device_id = msg_data.get("device_id", "") or msg.get("device_id", "")
+    user_id = ws_manager.get_authenticated_user_id(websocket)
+    if user_id is None:
+        await ws_manager.send_subscribe_result(websocket, 1002, "请先完成认证")
+        return
+    if not device_id:
+        await ws_manager.send_subscribe_result(websocket, 1003, "设备 ID 不能为空")
+        return
+
+    async with async_session_factory() as db:
+        if not await can_user_subscribe_to_device(db, user_id, device_id):
+            await ws_manager.send_subscribe_result(websocket, 1004, "无权订阅该设备")
+            return
+
     await ws_manager.subscribe(websocket, device_id)
 
 

@@ -12,8 +12,11 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_asyn
 
 import app.models  # noqa: F401 - register SQLAlchemy models
 from app.api.v1.control import command_queue
+from app.config import settings
 from app.db.session import Base, get_db
 from app.main import app
+from app.services.rate_limit import auth_rate_limiter
+from app.services.control_queue import control_queue
 
 TEST_DB_PATH = Path(__file__).parent / "test_cube.db"
 TEST_DB_URL = f"sqlite+aiosqlite:///{TEST_DB_PATH}"
@@ -21,9 +24,18 @@ TEST_DB_URL = f"sqlite+aiosqlite:///{TEST_DB_PATH}"
 
 @pytest.fixture(autouse=True)
 def clear_command_queue():
+    settings.DEBUG = True
+    settings.SECRET_KEY = "test-secret-key-with-at-least-32-characters"
+    settings.ALLOW_LEGACY_DEVICE_HANDSHAKE = True
+    settings.REDIS_URL = ""
+    settings.FIRMWARE_PUBLIC_BASE_URL = "https://tianmuzc.site"
     command_queue.clear()
+    control_queue.clear_memory()
+    auth_rate_limiter.clear_memory()
     yield
     command_queue.clear()
+    control_queue.clear_memory()
+    auth_rate_limiter.clear_memory()
 
 
 @pytest_asyncio.fixture(scope="session")

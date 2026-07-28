@@ -299,11 +299,9 @@ import '@/versions/senior/styles/base.css'
 import VersionSwitcher from '@/components/VersionSwitcher.vue'
 import { useWebSocket } from '@/composables/useWebSocket'
 import { BEIJING_TIME_ZONE } from '@/utils/format'
+import { useAuthStore } from '@/stores/auth'
 import {
   api,
-  clearToken,
-  getToken,
-  setToken,
   type AiSuggestion,
   type DeviceInfo,
   type OperationLog,
@@ -330,19 +328,20 @@ const navItems: Array<{ id: ViewId; label: string; icon: string }> = [
 ]
 
 const activeView = ref<ViewId>('home')
-const isSignedIn = ref(Boolean(getToken()))
+const authStore = useAuthStore()
+const isSignedIn = computed(() => authStore.isLoggedIn)
 const authMode = ref<'login' | 'register'>('login')
 const authLoading = ref(false)
 const authMessage = ref('')
 const authMessageIsError = ref(false)
-const authForm = reactive({ username: localStorage.getItem('username') || '', password: '' })
+const authForm = reactive({ username: authStore.username, password: '' })
 
 const appLoading = ref(false)
 const aiLoading = ref(false)
 const noticeText = ref('')
 const noticeKind = ref<'info' | 'error'>('info')
-let noticeTimer: ReturnType<typeof window.setTimeout> | undefined
-let sensorRefreshTimer: ReturnType<typeof window.setInterval> | undefined
+let noticeTimer: number | undefined
+let sensorRefreshTimer: number | undefined
 const ws = useWebSocket('/ws')
 const selectedDeviceId = ref(localStorage.getItem('seniorSelectedDeviceId') || '')
 const rawDevices = ref<DeviceInfo[]>([])
@@ -472,7 +471,7 @@ const weeklyCards = computed(() => {
 })
 
 const weeklySummaryFallback = computed(() => {
-  const latest = weeklyCards.value.at(-1)
+  const latest = weeklyCards.value[weeklyCards.value.length - 1]
   if (!selectedDevice.value) return '请选择设备后刷新周报。'
   return latest ? `最近状态为「${latest.status}」，重点看温度、湿度和空气质量。` : '暂无周报，请先选择设备并刷新。'
 })
@@ -603,8 +602,15 @@ async function handleAuth() {
     authMessageIsError.value = true
     return
   }
-  if (authMode.value === 'register' && authForm.password.length < 6) {
-    authMessage.value = '密码至少 6 个字符'
+  if (
+    authMode.value === 'register'
+    && (
+      authForm.password.length < 8
+      || !/[A-Za-z]/.test(authForm.password)
+      || !/\d/.test(authForm.password)
+    )
+  ) {
+    authMessage.value = '密码至少 8 位，且必须包含字母和数字'
     authMessageIsError.value = true
     return
   }
@@ -622,9 +628,11 @@ async function handleAuth() {
     }
 
     const result = await api.login(authForm.username, authForm.password)
-    setToken(result.access_token)
-    localStorage.setItem('username', authForm.username)
-    isSignedIn.value = true
+    authStore.setAuth({
+      token: result.access_token,
+      username: authForm.username,
+      role: 'user',
+    })
     ws.connect()
     await refreshAll()
   } catch (error) {
@@ -635,17 +643,16 @@ async function handleAuth() {
   }
 }
 
-function signOut() {
+async function signOut() {
   ws.disconnect()
-  clearToken()
-  isSignedIn.value = false
+  await authStore.signOut()
   rawDevices.value = []
   sensorMap.value = {}
   selectedDeviceId.value = ''
 }
 
 async function refreshAll() {
-  if (!getToken()) return
+  if (!authStore.token) return
 
   appLoading.value = true
   showNotice('正在同步数据')

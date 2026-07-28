@@ -4,6 +4,7 @@
 
 import asyncio
 import json
+import ssl
 import uuid
 from contextlib import asynccontextmanager
 
@@ -31,6 +32,10 @@ class MQTTClient:
         self._message_handler = None  # 消息处理回调函数
         self._client_id = f"cube-backend-{uuid.uuid4().hex[:8]}"
 
+    @property
+    def is_connected(self) -> bool:
+        return self._client is not None and self._running
+
     async def connect(self, message_handler=None) -> None:
         """
         连接到 MQTT Broker 并开始监听消息（支持自动重连）
@@ -38,6 +43,9 @@ class MQTTClient:
         Args:
             message_handler: 异步回调函数，接收 (topic, payload) 参数
         """
+        if not settings.MQTT_BROKER_URL:
+            logger.warning("MQTT_BROKER_URL 未配置，MQTT 功能未启动")
+            return
         try:
             import aiomqtt
         except ImportError:
@@ -63,6 +71,10 @@ class MQTTClient:
                 if settings.MQTT_USERNAME:
                     connect_kwargs["username"] = settings.MQTT_USERNAME
                     connect_kwargs["password"] = settings.MQTT_PASSWORD
+                if settings.MQTT_TLS:
+                    connect_kwargs["tls_context"] = ssl.create_default_context(
+                        cafile=settings.MQTT_CA_CERT or None
+                    )
 
                 self._client = aiomqtt.Client(**connect_kwargs)
                 await self._client.__aenter__()

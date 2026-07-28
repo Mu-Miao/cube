@@ -74,6 +74,7 @@ class SensorData(BaseModel):
     # 查询某设备某时间段的数据时走此索引，大幅提升查询性能
     __table_args__ = (
         Index("ix_sensor_data_device_time", "device_id", "timestamp"),
+        Index("ix_sensor_data_timestamp", "timestamp"),
     )
 
     def __repr__(self) -> str:

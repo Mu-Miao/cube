@@ -17,8 +17,9 @@ class Settings(BaseSettings):
     """
 
     # === 应用基础配置 ===
-    DEBUG: bool = True  # 调试模式，开启后自动重载
+    DEBUG: bool = True
     APP_NAME: str = "智能桌面魔方 MVP"  # 应用名称
+    WEB_CONCURRENCY: int = 1
 
     # === OTA 固件下载配置 ===
     # ESP32 必须能访问该地址；公网演示时填 tianmuzc.site 这类可外网访问的域名。
@@ -29,9 +30,17 @@ class Settings(BaseSettings):
     DATABASE_URL: str = "sqlite+aiosqlite:///./data/cube.db"
 
     # === JWT 认证配置 ===
-    SECRET_KEY: str = "mvp-secret-key-2026-change-in-production"  # JWT 签名密钥（生产环境必须更换）
+    SECRET_KEY: str = ""
     ALGORITHM: str = "HS256"  # JWT 签名算法
-    ACCESS_TOKEN_EXPIRE_MINUTES: int = 1440  # Token 有效期（分钟），默认 24 小时
+    ACCESS_TOKEN_EXPIRE_MINUTES: int = 15
+    REFRESH_TOKEN_EXPIRE_DAYS: int = 7
+    REFRESH_COOKIE_NAME: str = "cube_refresh_token"
+    REFRESH_COOKIE_SECURE: bool = False
+
+    # === 设备认证配置 ===
+    DEVICE_TOKEN_EXPIRE_SECONDS: int = 86400
+    DEVICE_PAIRING_CODE_EXPIRE_MINUTES: int = 10
+    ALLOW_LEGACY_DEVICE_HANDSHAKE: bool = False
 
     # === CORS 跨域配置 ===
     # 允许的前端源地址列表（开发环境使用）
@@ -46,10 +55,12 @@ class Settings(BaseSettings):
     ]
 
     # === MQTT 硬件对接配置 ===
-    MQTT_BROKER_URL: str = "broker.emqx.io"  # MQTT Broker 地址
-    MQTT_BROKER_PORT: int = 1883  # MQTT Broker 端口
+    MQTT_BROKER_URL: str = ""
+    MQTT_BROKER_PORT: int = 8883
     MQTT_USERNAME: str = ""  # MQTT 用户名（可选）
     MQTT_PASSWORD: str = ""  # MQTT 密码（可选）
+    MQTT_TLS: bool = True
+    MQTT_CA_CERT: str = ""
     MQTT_TOPIC_PREFIX: str = "cube2026"  # Topic 前缀（公共 Broker 上隔离消息）
 
     # === 设备心跳超时配置 ===
@@ -70,6 +81,12 @@ class Settings(BaseSettings):
     # === WebSocket 配置 ===
     WS_PING_INTERVAL: int = 30
     WS_MAX_CONNECTIONS: int = 100
+
+    # === Redis / 演示模式 ===
+    REDIS_URL: str = ""
+    DEMO_MODE: bool = False
+    CONTROL_ACK_TIMEOUT_SECONDS: int = 15
+    CONTROL_MAX_RETRIES: int = 3
 
     # === 外部服务配置（正在开发中，非当前 MVP） ===
     TTS_API_URL: str = ""
@@ -106,3 +123,51 @@ class Settings(BaseSettings):
 
 # 创建全局单例配置实例，其他模块直接导入使用
 settings = Settings()
+
+
+def validate_runtime_settings() -> None:
+    insecure_secrets = {
+        "",
+        "mvp-secret-key-2026-change-in-production",
+        "change-me-in-production",
+        "replace-with-at-least-32-random-characters",
+    }
+    if settings.SECRET_KEY in insecure_secrets or len(settings.SECRET_KEY) < 32:
+        raise RuntimeError("SECRET_KEY 必须设置为至少 32 位的安全随机值")
+    if settings.WEB_CONCURRENCY < 1:
+        raise RuntimeError("WEB_CONCURRENCY 必须大于等于 1")
+    if settings.DATABASE_URL.startswith("sqlite") and settings.WEB_CONCURRENCY != 1:
+        raise RuntimeError("SQLite 仅支持 WEB_CONCURRENCY=1")
+
+    if not settings.DEBUG:
+        if settings.DATABASE_URL.startswith("sqlite"):
+            raise RuntimeError("生产环境必须使用 PostgreSQL")
+        if not settings.REDIS_URL:
+            raise RuntimeError("生产环境必须配置 REDIS_URL")
+        public_brokers = {
+            "broker.emqx.io",
+            "broker.hivemq.com",
+            "test.mosquitto.org",
+        }
+        broker_host = settings.MQTT_BROKER_URL.lower().strip().split(":", 1)[0]
+        if not broker_host or broker_host in public_brokers or not settings.MQTT_TLS:
+            raise RuntimeError("生产环境必须配置启用 TLS 的私有 MQTT Broker")
+        if settings.MQTT_BROKER_PORT != 8883:
+            raise RuntimeError("生产环境 MQTT 必须使用 TLS 端口 8883")
+        if not settings.MQTT_USERNAME or not settings.MQTT_PASSWORD:
+            raise RuntimeError("生产环境必须配置 MQTT 用户名和密码")
+        if not settings.MQTT_CA_CERT:
+            raise RuntimeError("生产环境必须配置 MQTT_CA_CERT")
+        if not settings.FIRMWARE_PUBLIC_BASE_URL.startswith("https://"):
+            raise RuntimeError("生产环境固件下载基址必须使用 HTTPS")
+        if not settings.CORS_ORIGINS:
+            raise RuntimeError("生产环境必须显式配置 CORS_ORIGINS")
+        if any(
+            origin == "*" or "localhost" in origin or "127.0.0.1" in origin
+            for origin in settings.CORS_ORIGINS
+        ):
+            raise RuntimeError("生产环境 CORS_ORIGINS 禁止通配符和本地地址")
+        if settings.DEMO_MODE:
+            raise RuntimeError("生产环境禁止启用 DEMO_MODE")
+        if not settings.REFRESH_COOKIE_SECURE:
+            raise RuntimeError("生产环境必须启用 REFRESH_COOKIE_SECURE")

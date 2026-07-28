@@ -2,109 +2,35 @@
   <AuroraField />
 
   <Transition name="login-fade" mode="out-in">
-    <section v-if="!isSignedIn" key="login" class="login-screen">
-      <SideRays
-        class-name="login-screen__rays"
-        :speed="2.5"
-        ray-color1="#EAB308"
-        ray-color2="#96c8ff"
-        :intensity="2"
-        :spread="2"
-        origin="top-right"
-        :tilt="0"
-        :saturation="1.5"
-        :blend="0.75"
-        :falloff="1.6"
-        :opacity="1"
-      />
-      <DotField
-        class-name="login-screen__dots"
-        :dot-radius="1.5"
-        :dot-spacing="14"
-        :bulge-strength="67"
-        :glow-radius="160"
-        :sparkle="false"
-        :wave-amplitude="0"
-        :cursor-radius="500"
-        :cursor-force="0.1"
-        gradient-from="rgba(124, 255, 103, 0.32)"
-        gradient-to="rgba(160, 255, 188, 0.18)"
-        glow-color="rgba(18, 15, 23, 0.86)"
-        bulge-only
-      />
-
-      <div class="login-shell">
-        <div class="login-copy">
-          <div class="brand brand--login">
-            <img src="/tmzc-logo.svg" alt="" class="brand__mark" />
-            <span>智能魔方</span>
-          </div>
-          <BlurReveal>
-            <h1>智能桌面魔方</h1>
-            <p>以更轻、更安静的界面查看环境状态，并控制你的桌面魔方。</p>
-          </BlurReveal>
-        </div>
-
-        <LiquidGlass as="form" class="login-card" @submit.prevent="handleAuth">
-          <span class="login-card__eyebrow">欢迎回来</span>
-          <h2>{{ authMode === 'login' ? '登录控制台' : '创建账号' }}</h2>
-          <label>
-            <span>账号</span>
-            <input v-model="authForm.username" autocomplete="username" />
-          </label>
-          <label>
-            <span>密码</span>
-            <input v-model="authForm.password" type="password" autocomplete="current-password" />
-          </label>
-          <button class="primary-button" type="submit" :disabled="authLoading">
-            {{ authLoading ? '连接中...' : authMode === 'login' ? '进入概览' : '完成注册' }}
-          </button>
-          <button class="text-button" type="button" @click="authMode = authMode === 'login' ? 'register' : 'login'">
-            {{ authMode === 'login' ? '没有账号？注册' : '已有账号？登录' }}
-          </button>
-          <p v-if="authMessage">{{ authMessage }}</p>
-        </LiquidGlass>
-      </div>
-    </section>
+    <PublicAuthScreen
+      v-if="!isSignedIn"
+      key="login"
+      v-model:username="authForm.username"
+      v-model:password="authForm.password"
+      :mode="authMode"
+      :loading="authLoading"
+      :message="authMessage"
+      @submit="handleAuth"
+      @toggle-mode="authMode = authMode === 'login' ? 'register' : 'login'"
+    />
 
     <div v-else key="app" class="app-shell" :class="deviceShellClasses">
-    <aside class="sidebar">
-      <div class="brand">
-        <img src="/tmzc-logo.svg" alt="" class="brand__mark" />
-        <span>智能魔方</span>
-      </div>
-
-      <nav class="nav-list" aria-label="主导航">
-        <button
-          v-for="item in navItems"
-          :key="item.id"
-          class="nav-item"
-          :class="{ 'nav-item--active': activeView === item.id }"
-          @click="activeView = item.id"
-        >
-          <span class="nav-item__icon" v-html="item.icon"></span>
-          <span>{{ item.label }}</span>
-        </button>
-      </nav>
-
-    </aside>
+    <PublicSidebar
+      :items="navItems"
+      :active-view="activeView"
+      @select="selectView"
+    />
 
     <main class="workspace">
-      <header class="topbar">
-        <div>
-          <p class="topbar__date">{{ todayText }}</p>
-          <strong>{{ currentViewTitle }}</strong>
-        </div>
-        <div class="topbar__actions">
-          <button class="icon-button" aria-label="刷新" title="刷新数据" @click="refreshAll" v-html="icons.refresh"></button>
-          <button class="icon-button" aria-label="通知" v-html="icons.bell"></button>
-          <VersionSwitcher variant="dark" />
-          <button class="profile-button" @click="signOut">
-            <span>J</span>
-            <strong>{{ authForm.username || 'User' }}</strong>
-          </button>
-        </div>
-      </header>
+      <PublicTopbar
+        :date-text="todayText"
+        :title="currentViewTitle"
+        :username="authForm.username"
+        :refresh-icon="icons.refresh"
+        :bell-icon="icons.bell"
+        @refresh="refreshAll"
+        @sign-out="signOut"
+      />
 
       <div v-if="statusMessage || errorMessage" class="app-notice" :class="{ 'app-notice--error': errorMessage }">
         {{ errorMessage || statusMessage }}
@@ -440,20 +366,37 @@
 <script setup lang="ts">
 import { computed, defineAsyncComponent, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
 import '@/versions/public/styles/base.css'
-import { api, clearToken, getToken, setToken, type AiSuggestion, type DeviceInfo, type OperationLog, type SensorData } from '@/versions/public/api/client'
+import { api, type AiSuggestion, type DeviceInfo, type OperationLog, type SensorData } from '@/versions/public/api/client'
+import { useAuthStore } from '@/stores/auth'
 import BlurReveal from '@/versions/public/components/BlurReveal.vue'
 import ControlRow from '@/versions/public/components/ControlRow.vue'
 import DeviceRow from '@/versions/public/components/DeviceRow.vue'
 import LiquidGlass from '@/versions/public/components/LiquidGlass.vue'
 import ProductCube from '@/versions/public/components/ProductCube.vue'
-import VersionSwitcher from '@/components/VersionSwitcher.vue'
+import PublicAuthScreen from '@/versions/public/components/PublicAuthScreen.vue'
+import PublicSidebar from '@/versions/public/components/PublicSidebar.vue'
+import PublicTopbar from '@/versions/public/components/PublicTopbar.vue'
 import { useWebSocket } from '@/composables/useWebSocket'
 import { BEIJING_TIME_ZONE } from '@/utils/format'
 import type { Device as DeviceView, Insight } from '@/versions/public/data/mockData'
+import {
+  formatDate,
+  formatLogDetail,
+  formatMetric,
+  formatWeekdayLabel,
+  formatWeeklyMetric,
+  getErrorMessage,
+  getScoreSummary,
+  getWeeklyDayStatus,
+  mapSuggestionTone,
+  metricWidth,
+  normalizeDeviceName,
+  normalizeDeviceSubtitle,
+  type WeeklyDayReading,
+} from '@/versions/public/utils/formatters'
 
 const AuroraField = defineAsyncComponent(() => import('@/versions/public/components/AuroraField.vue'))
 const DotField = defineAsyncComponent(() => import('@/versions/public/components/DotField.vue'))
-const SideRays = defineAsyncComponent(() => import('@/versions/public/components/SideRays.vue'))
 
 const icons = {
   home: '<svg viewBox="0 0 24 24"><path d="M4 11.2 12 4l8 7.2V20a1 1 0 0 1-1 1h-5v-6h-4v6H5a1 1 0 0 1-1-1v-8.8Z"/></svg>',
@@ -481,15 +424,9 @@ const navItems = [
 type ViewId = (typeof navItems)[number]['id']
 type AppModeId = 'teen' | 'public' | 'senior'
 type AiMode = 'rule' | 'llm'
-type WeeklyDayReading = {
-  date: string
-  temperature: number | null
-  humidity: number | null
-  aqi: number | null
-  sample_count?: number
-}
 
 const currentMode: AppModeId = 'public'
+const authStore = useAuthStore()
 const activeView = ref<ViewId | 'settings'>('overview')
 const brightness = ref(62)
 const lightEnabled = ref(true)
@@ -497,7 +434,7 @@ const notifyEnabled = ref(true)
 const focusEnabled = ref(false)
 const focusMode = ref('关闭')
 const focusModes = ['关闭', '专注']
-const isSignedIn = ref(Boolean(getToken()))
+const isSignedIn = computed(() => authStore.isLoggedIn)
 const isMobileViewport = ref(false)
 const isTouchDevice = ref(false)
 
@@ -506,7 +443,7 @@ const authMode = ref<'login' | 'register'>(initialAuthMode)
 const authLoading = ref(false)
 const authMessage = ref('')
 const authForm = reactive({
-  username: initialAuthMode === 'register' ? '' : localStorage.getItem('username') || 'demo',
+  username: initialAuthMode === 'register' ? '' : authStore.username || 'demo',
   password: initialAuthMode === 'register' ? '' : 'demo123456',
 })
 
@@ -515,7 +452,7 @@ const aiLoading = ref(false)
 const aiMode = ref<AiMode>('rule')
 const statusMessage = ref('')
 const errorMessage = ref('')
-let noticeTimer: ReturnType<typeof window.setTimeout> | undefined
+let noticeTimer: number | undefined
 const ws = useWebSocket('/ws')
 const selectedDeviceId = ref(localStorage.getItem('selectedDeviceId') || '')
 const rawDevices = ref<DeviceInfo[]>([])
@@ -683,7 +620,7 @@ const weeklyCards = computed(() => {
 })
 
 const weeklySummaryFallback = computed(() => {
-  const latest = weeklyCards.value.at(-1)
+  const latest = weeklyCards.value[weeklyCards.value.length - 1]
   return latest ? `最近环境状态为「${latest.status}」，可重点关注温度、湿度和空气质量三项变化。` : '暂无本周环境数据。'
 })
 
@@ -691,43 +628,6 @@ function toneIcon(tone: 'green' | 'blue' | 'amber') {
   if (tone === 'green') return icons.leaf
   if (tone === 'blue') return icons.drop
   return icons.sun
-}
-
-function formatMetric(value: number | null | undefined) {
-  if (value === null || value === undefined || Number.isNaN(value)) return '--'
-  return Number.isInteger(value) ? String(value) : value.toFixed(1)
-}
-
-function formatWeeklyMetric(value: number | null | undefined, unit: string) {
-  if (value === null || value === undefined || Number.isNaN(value)) return '--'
-  const text = Number.isInteger(value) ? String(value) : value.toFixed(1)
-  return unit ? `${text}${unit}` : text
-}
-
-function metricWidth(value: number | null | undefined, min: number, max: number) {
-  if (value === null || value === undefined || Number.isNaN(value)) return '8%'
-  const normalized = Math.max(0, Math.min(1, (value - min) / (max - min)))
-  return `${Math.round(18 + normalized * 82)}%`
-}
-
-function formatWeekdayLabel(date: string, index: number) {
-  const parsed = new Date(date)
-  if (!Number.isNaN(parsed.getTime())) {
-    return new Intl.DateTimeFormat('zh-CN', { weekday: 'short' }).format(parsed)
-  }
-
-  const fallback = ['周一', '周二', '周三', '周四', '周五', '周六', '周日']
-  return fallback[index % fallback.length]
-}
-
-function getWeeklyDayStatus(day: WeeklyDayReading): { label: string; tone: 'good' | 'watch' | 'alert' } {
-  if ((day.aqi ?? 0) >= 150) return { label: '空气较差', tone: 'alert' }
-  if ((day.aqi ?? 0) >= 100) return { label: '空气关注', tone: 'watch' }
-  if ((day.humidity ?? 0) >= 75) return { label: '偏湿', tone: 'watch' }
-  if ((day.humidity ?? 100) <= 35) return { label: '偏干', tone: 'watch' }
-  if ((day.temperature ?? 22) >= 30) return { label: '偏热', tone: 'watch' }
-  if ((day.temperature ?? 22) <= 18) return { label: '偏冷', tone: 'watch' }
-  return { label: '舒适', tone: 'good' }
 }
 
 function buildFallbackWeeklyDays(): WeeklyDayReading[] {
@@ -749,19 +649,13 @@ function buildFallbackWeeklyDays(): WeeklyDayReading[] {
   })
 }
 
-function normalizeDeviceName(device: DeviceInfo) {
-  const name = device.device_name?.trim()
-  return name || device.device_id || '未命名设备'
-}
-
-function normalizeDeviceSubtitle(device: DeviceInfo) {
-  const parts = [device.device_id, device.chip_model].filter((part): part is string => Boolean(part?.trim()))
-  return parts.length ? parts.join(' · ') : '无设备信息'
-}
-
 function openMode(mode: AppModeId) {
   if (mode === currentMode) return
   window.location.href = getModeHref(mode)
+}
+
+function selectView(view: string) {
+  activeView.value = view as ViewId | 'settings'
 }
 
 function getModeHref(mode: AppModeId) {
@@ -800,10 +694,6 @@ function clearNoticeTimer() {
   noticeTimer = undefined
 }
 
-function getErrorMessage(error: unknown, fallback: string) {
-  return error instanceof Error ? error.message : fallback
-}
-
 function selectDevice(deviceId: string) {
   selectedDeviceId.value = deviceId
   localStorage.setItem('selectedDeviceId', deviceId)
@@ -821,8 +711,15 @@ async function handleAuth() {
     authMessage.value = '用户名至少 2 个字符'
     return
   }
-  if (authMode.value === 'register' && authForm.password.length < 6) {
-    authMessage.value = '密码至少 6 个字符'
+  if (
+    authMode.value === 'register'
+    && (
+      authForm.password.length < 8
+      || !/[A-Za-z]/.test(authForm.password)
+      || !/\d/.test(authForm.password)
+    )
+  ) {
+    authMessage.value = '密码至少 8 位，且必须包含字母和数字'
     return
   }
 
@@ -838,9 +735,11 @@ async function handleAuth() {
     }
 
     const result = await api.login(authForm.username, authForm.password)
-    setToken(result.access_token)
-    localStorage.setItem('username', authForm.username)
-    isSignedIn.value = true
+    authStore.setAuth({
+      token: result.access_token,
+      username: authForm.username,
+      role: 'user',
+    })
     ws.connect()
     await refreshAll()
   } catch (error) {
@@ -850,17 +749,16 @@ async function handleAuth() {
   }
 }
 
-function signOut() {
+async function signOut() {
   ws.disconnect()
-  clearToken()
-  isSignedIn.value = false
+  await authStore.signOut()
   rawDevices.value = []
   sensorMap.value = {}
   selectedDeviceId.value = ''
 }
 
 async function refreshAll() {
-  if (!getToken()) return
+  if (!authStore.token) return
 
   appLoading.value = true
   showStatus('正在同步后端数据...')
@@ -1073,51 +971,6 @@ async function loadOperationLogs() {
   } catch {
     operationLogs.value = []
   }
-}
-
-function getScoreSummary(score: number) {
-  if (score >= 90) return '当前环境非常舒适，各项指标表现优秀。'
-  if (score >= 70) return '当前环境整体良好，建议继续保持。'
-  if (score >= 40) return '当前环境一般，部分指标需要关注。'
-  return '当前环境较差，建议尽快通风并检查设备状态。'
-}
-
-function mapSuggestionTone(icon: string): 'green' | 'blue' | 'amber' {
-  if (['wind', 'air', 'aqi', 'leaf', 'ok'].includes(icon)) return 'green'
-  if (['humidity', 'water', 'temp', 'temperature'].includes(icon)) return 'blue'
-  return 'amber'
-}
-
-function formatDate(value?: string) {
-  if (!value) return '--'
-  return new Intl.DateTimeFormat('zh-CN', {
-    month: '2-digit',
-    day: '2-digit',
-    hour: '2-digit',
-    minute: '2-digit',
-    timeZone: BEIJING_TIME_ZONE,
-  }).format(new Date(value))
-}
-
-function formatLogDetail(detail?: string) {
-  if (!detail) return '无详情'
-  try {
-    const parsed = JSON.parse(detail)
-    return Object.entries(parsed).map(([key, value]) => `${key}: ${formatLogValue(value)}`).join(' · ')
-  } catch {
-    return detail
-  }
-}
-
-function formatLogValue(value: unknown): string {
-  if (value === null || value === undefined) return '--'
-  if (typeof value === 'object') {
-    const entries = Object.entries(value as Record<string, unknown>)
-    if (!entries.length) return '{}'
-    return entries.map(([key, item]) => `${key}=${formatLogValue(item)}`).join(', ')
-  }
-
-  return String(value)
 }
 
 watch(activeView, (view) => {

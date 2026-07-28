@@ -2,10 +2,11 @@
 # 异步数据库会话管理
 # 配置 SQLAlchemy 异步引擎和会话工厂，提供 get_db 依赖注入
 
-import os
 from pathlib import Path
 
-from sqlalchemy import text
+from alembic.config import Config
+from alembic.script import ScriptDirectory
+from sqlalchemy import event, text
 from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession, async_sessionmaker
 from sqlalchemy.orm import DeclarativeBase
 
@@ -13,17 +14,13 @@ from app.config import settings
 
 # 将相对路径的数据库 URL 转为基于项目根目录的绝对路径，避免 CWD 影响路径解析
 _PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
-_raw_db_path = settings.DATABASE_URL.split("///")[-1]
-if not os.path.isabs(_raw_db_path):
-    _abs_db_path = _PROJECT_ROOT / _raw_db_path
-    settings.DATABASE_URL = f"sqlite+aiosqlite:///{_abs_db_path}"
-    _db_dir = str(_abs_db_path.parent)
-else:
-    _db_dir = os.path.dirname(_raw_db_path)
-
-# 确保数据库文件所在目录存在（SQLite 异步版不会自动创建目录）
-if _db_dir:
-    Path(_db_dir).mkdir(parents=True, exist_ok=True)
+if settings.DATABASE_URL.startswith("sqlite"):
+    raw_db_path = settings.DATABASE_URL.split("///")[-1]
+    db_path = Path(raw_db_path)
+    if not db_path.is_absolute():
+        db_path = _PROJECT_ROOT / db_path
+        settings.DATABASE_URL = f"sqlite+aiosqlite:///{db_path}"
+    db_path.parent.mkdir(parents=True, exist_ok=True)
 
 # 创建异步数据库引擎
 # 使用 aiosqlite 驱动实现 SQLite 的异步操作
@@ -32,6 +29,15 @@ engine = create_async_engine(
     echo=settings.DEBUG,  # 调试模式下打印 SQL 语句
     future=True,  # 使用 SQLAlchemy 2.0 风格 API
 )
+
+
+if settings.DATABASE_URL.startswith("sqlite"):
+    @event.listens_for(engine.sync_engine, "connect")
+    def _configure_sqlite(dbapi_connection, _connection_record):
+        cursor = dbapi_connection.cursor()
+        cursor.execute("PRAGMA journal_mode=WAL")
+        cursor.execute("PRAGMA busy_timeout=5000")
+        cursor.close()
 
 # 创建异步会话工厂
 # 每次数据库操作通过此工厂获取独立的会话
@@ -76,21 +82,23 @@ async def init_db():
     # 导入模型，确保表注册到 Base.metadata
     import app.models  # noqa: F401
 
+    if not settings.DEBUG:
+        return
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
-        if settings.DATABASE_URL.startswith("sqlite"):
-            columns = await conn.execute(text("PRAGMA table_info(sensor_data)"))
-            column_names = {row[1] for row in columns}
-            if "pm25" not in column_names:
-                await conn.execute(text("ALTER TABLE sensor_data ADD COLUMN pm25 DOUBLE"))
-            control_columns = {
-                "light": "INTEGER",
-                "light_brightness": "INTEGER",
-                "color_temperature": "INTEGER",
-                "wechat_notify": "INTEGER",
-                "auto_screen_brightness": "INTEGER",
-                "screen_brightness": "INTEGER",
-            }
-            for column_name, column_type in control_columns.items():
-                if column_name not in column_names:
-                    await conn.execute(text(f"ALTER TABLE sensor_data ADD COLUMN {column_name} {column_type}"))
+
+
+async def verify_database_migration() -> None:
+    """Refuse production startup when the database is not at Alembic head."""
+    config = Config(str(_PROJECT_ROOT / "alembic.ini"))
+    expected_revision = ScriptDirectory.from_config(config).get_current_head()
+    async with engine.connect() as connection:
+        current_revision = (
+            await connection.execute(text("SELECT version_num FROM alembic_version"))
+        ).scalar_one_or_none()
+    if not expected_revision or current_revision != expected_revision:
+        raise RuntimeError(
+            "数据库迁移版本不匹配，"
+            f"current={current_revision or 'none'} expected={expected_revision or 'none'}；"
+            "请先执行 alembic upgrade head"
+        )

@@ -2,6 +2,7 @@ import argparse
 import asyncio
 import hashlib
 import json
+import ssl
 import sys
 import time
 import uuid
@@ -22,6 +23,15 @@ def _loads(payload: bytes) -> dict:
         return {}
 
 
+def _redacted(payload: dict) -> dict:
+    safe = dict(payload)
+    if safe.get("token"):
+        safe["token"] = "***"
+    if safe.get("pairing_code"):
+        safe["pairing_code"] = "***"
+    return safe
+
+
 async def _download_and_verify(url: str, expected_md5: str) -> tuple[bool, str, int]:
     async with httpx.AsyncClient(timeout=60, follow_redirects=False, trust_env=False) as client:
         resp = await client.get(url)
@@ -37,10 +47,16 @@ async def _download_and_verify(url: str, expected_md5: str) -> tuple[bool, str, 
 
 async def _publish_json(client, topic: str, payload: dict) -> None:
     await client.publish(topic, json.dumps(payload, ensure_ascii=False).encode("utf-8"))
-    print(f">>> {topic}: {json.dumps(payload, ensure_ascii=False)}")
+    print(f">>> {topic}: {json.dumps(_redacted(payload), ensure_ascii=False)}")
 
 
-async def simulate(device_id: str, current_version: str, timeout: int) -> int:
+async def simulate(
+    device_id: str,
+    current_version: str,
+    timeout: int,
+    pairing_code: str | None,
+    current_token: str | None,
+) -> int:
     try:
         import aiomqtt
     except ImportError:
@@ -51,11 +67,19 @@ async def simulate(device_id: str, current_version: str, timeout: int) -> int:
     control_topic = get_control_topic(device_id)
     client_id = f"ota-sim-{uuid.uuid4().hex[:8]}"
 
-    async with aiomqtt.Client(
-        hostname=settings.MQTT_BROKER_URL,
-        port=settings.MQTT_BROKER_PORT,
-        identifier=client_id,
-    ) as client:
+    client_options = {
+        "hostname": settings.MQTT_BROKER_URL,
+        "port": settings.MQTT_BROKER_PORT,
+        "identifier": client_id,
+        "username": settings.MQTT_USERNAME or None,
+        "password": settings.MQTT_PASSWORD or None,
+    }
+    if settings.MQTT_TLS:
+        client_options["tls_context"] = ssl.create_default_context(
+            cafile=settings.MQTT_CA_CERT or None
+        )
+
+    async with aiomqtt.Client(**client_options) as client:
         await client.subscribe(status_topic)
         await client.subscribe(control_topic)
 
@@ -68,6 +92,8 @@ async def simulate(device_id: str, current_version: str, timeout: int) -> int:
                 "type": "handshake",
                 "chip_model": "ESP32-S3-SIM",
                 "version": current_version,
+                "pairing_code": pairing_code,
+                "token": current_token,
             },
         )
 
@@ -77,7 +103,7 @@ async def simulate(device_id: str, current_version: str, timeout: int) -> int:
                 async for message in client.messages:
                     data = _loads(message.payload)
                     msg_type = data.get("type")
-                    print(f"<<< {message.topic}: {json.dumps(data, ensure_ascii=False)}")
+                    print(f"<<< {message.topic}: {json.dumps(_redacted(data), ensure_ascii=False)}")
 
                     if msg_type == "handshake_ack" and data.get("token"):
                         token = data["token"]
@@ -108,6 +134,7 @@ async def simulate(device_id: str, current_version: str, timeout: int) -> int:
                             "token": token,
                             "timestamp": int(time.time()),
                             "type": "control_ack",
+                            "command_id": data.get("command_id", ""),
                             "command": "ota_update",
                             "value": data.get("version", ""),
                             "result": "success" if ok else "failed",
@@ -132,8 +159,18 @@ def main() -> None:
     parser.add_argument("--device-id", default="CUBE001")
     parser.add_argument("--current-version", default="v1.0.0")
     parser.add_argument("--timeout", type=int, default=30)
+    parser.add_argument("--pairing-code", help="管理员生成的一次性配对码")
+    parser.add_argument("--token", help="设备已有 Token，用于轮换")
     args = parser.parse_args()
-    raise SystemExit(asyncio.run(simulate(args.device_id, args.current_version, args.timeout)))
+    if not args.pairing_code and not args.token and not settings.ALLOW_LEGACY_DEVICE_HANDSHAKE:
+        parser.error("必须提供 --pairing-code（首次配对）或 --token（后续轮换）")
+    raise SystemExit(asyncio.run(simulate(
+        args.device_id,
+        args.current_version,
+        args.timeout,
+        args.pairing_code,
+        args.token,
+    )))
 
 
 if __name__ == "__main__":

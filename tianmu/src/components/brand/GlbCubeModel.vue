@@ -27,9 +27,6 @@
 
 <script setup lang="ts">
 import { onBeforeUnmount, onMounted, ref } from 'vue'
-import * as THREE from 'three'
-import { DRACOLoader } from 'three/examples/jsm/loaders/DRACOLoader.js'
-import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js'
 
 const modelUrl = '/mzh5(1).glb'
 
@@ -57,29 +54,31 @@ const props = withDefaults(
 const canvasRef = ref<HTMLCanvasElement | null>(null)
 const isDragging = ref(false)
 
-let renderer: THREE.WebGLRenderer | null = null
-let scene: THREE.Scene | null = null
-let camera: THREE.PerspectiveCamera | null = null
-let modelPivot: THREE.Group | null = null
-let model: THREE.Group | null = null
-let dracoLoader: DRACOLoader | null = null
+let three: typeof import('three') | null = null
+let renderer: import('three').WebGLRenderer | null = null
+let scene: import('three').Scene | null = null
+let camera: import('three').PerspectiveCamera | null = null
+let modelPivot: import('three').Group | null = null
+let model: import('three').Group | null = null
+let dracoLoader: import('three/examples/jsm/loaders/DRACOLoader.js').DRACOLoader | null = null
 let resizeObserver: ResizeObserver | null = null
 let frameId = 0
-let yaw = THREE.MathUtils.degToRad(18)
-let pitch = THREE.MathUtils.degToRad(8)
+let mounted = true
+let yaw = (18 * Math.PI) / 180
+let pitch = (8 * Math.PI) / 180
 let dragStartX = 0
 let dragStartY = 0
 let dragStartYaw = yaw
 let dragStartPitch = pitch
 
-function fitCameraToModel(object: THREE.Object3D) {
-  if (!camera) return
+function fitCameraToModel(object: import('three').Object3D) {
+  if (!camera || !three) return
 
-  const box = new THREE.Box3().setFromObject(object)
-  const size = box.getSize(new THREE.Vector3())
-  const center = box.getCenter(new THREE.Vector3())
+  const box = new three.Box3().setFromObject(object)
+  const size = box.getSize(new three.Vector3())
+  const center = box.getCenter(new three.Vector3())
   const maxSize = Math.max(size.x, size.y, size.z)
-  const distance = maxSize / (2 * Math.tan(THREE.MathUtils.degToRad(camera.fov) / 2))
+  const distance = maxSize / (2 * Math.tan(three.MathUtils.degToRad(camera.fov) / 2))
 
   object.position.sub(center)
   camera.position.set(distance * 0.7, distance * 0.58, distance * 1.15)
@@ -133,7 +132,7 @@ function handlePointerMove(event: PointerEvent) {
   const deltaX = event.clientX - dragStartX
   const deltaY = event.clientY - dragStartY
   yaw = dragStartYaw + deltaX * 0.01
-  pitch = THREE.MathUtils.clamp(dragStartPitch + deltaY * 0.008, -0.75, 0.75)
+  pitch = Math.max(-0.75, Math.min(0.75, dragStartPitch + deltaY * 0.008))
 }
 
 function handlePointerUp(event: PointerEvent) {
@@ -144,30 +143,38 @@ function handlePointerUp(event: PointerEvent) {
   if (target.hasPointerCapture(event.pointerId)) target.releasePointerCapture(event.pointerId)
 }
 
-onMounted(() => {
+onMounted(async () => {
   const canvas = canvasRef.value
   if (!canvas) return
 
-  scene = new THREE.Scene()
-  modelPivot = new THREE.Group()
+  const [threeModule, { DRACOLoader }, { GLTFLoader }] = await Promise.all([
+    import('three'),
+    import('three/examples/jsm/loaders/DRACOLoader.js'),
+    import('three/examples/jsm/loaders/GLTFLoader.js'),
+  ])
+  if (!mounted || !canvasRef.value) return
+  three = threeModule
+
+  scene = new three.Scene()
+  modelPivot = new three.Group()
   scene.add(modelPivot)
-  camera = new THREE.PerspectiveCamera(34, 1, 0.01, 100)
-  renderer = new THREE.WebGLRenderer({
+  camera = new three.PerspectiveCamera(34, 1, 0.01, 100)
+  renderer = new three.WebGLRenderer({
     canvas,
     alpha: true,
     antialias: true,
     powerPreference: 'high-performance',
   })
-  renderer.outputColorSpace = THREE.SRGBColorSpace
+  renderer.outputColorSpace = three.SRGBColorSpace
 
-  const keyLight = new THREE.DirectionalLight(0xffffff, 3.4)
+  const keyLight = new three.DirectionalLight(0xffffff, 3.4)
   keyLight.position.set(3, 5, 4)
   scene.add(keyLight)
 
-  const fillLight = new THREE.DirectionalLight(0x67e8f9, 2.2)
+  const fillLight = new three.DirectionalLight(0x67e8f9, 2.2)
   fillLight.position.set(-4, 2, 3)
   scene.add(fillLight)
-  scene.add(new THREE.AmbientLight(0xbdefff, 2.4))
+  scene.add(new three.AmbientLight(0xbdefff, 2.4))
 
   resizeObserver = new ResizeObserver(resizeRenderer)
   resizeObserver.observe(canvas)
@@ -179,9 +186,10 @@ onMounted(() => {
   gltfLoader.setDRACOLoader(dracoLoader)
 
   gltfLoader.load(modelUrl, (gltf) => {
+    if (!mounted || !three) return
     model = gltf.scene
     model.traverse((child) => {
-      if (child instanceof THREE.Mesh) {
+      if (child instanceof three!.Mesh) {
         child.castShadow = false
         child.receiveShadow = false
         child.frustumCulled = false
@@ -195,12 +203,13 @@ onMounted(() => {
 })
 
 onBeforeUnmount(() => {
+  mounted = false
   if (frameId) window.cancelAnimationFrame(frameId)
   resizeObserver?.disconnect()
   renderer?.dispose()
   dracoLoader?.dispose()
   scene?.traverse((object) => {
-    if (object instanceof THREE.Mesh) {
+    if (three && object instanceof three.Mesh) {
       object.geometry.dispose()
       const materials = Array.isArray(object.material) ? object.material : [object.material]
       materials.forEach((material) => material.dispose())
@@ -212,6 +221,7 @@ onBeforeUnmount(() => {
   modelPivot = null
   model = null
   dracoLoader = null
+  three = null
 })
 </script>
 

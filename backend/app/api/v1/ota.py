@@ -2,18 +2,17 @@
 # OTA 固件更新接口
 # 后端通过 MQTT 下发 OTA 指令，ESP32 通过 HTTP 下载固件并自行校验、烧录、重启。
 
-import hashlib
 import json
 import re
 import time
-from urllib.parse import urljoin
 
-from fastapi import APIRouter, Depends, File, Query, Request, UploadFile
+from fastapi import APIRouter, Depends, File, HTTPException, Query, Request, UploadFile
+from fastapi.responses import FileResponse
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import get_current_admin
-from app.config import BACKEND_DIR, settings
+from app.config import settings
 from app.db.session import get_db
 from app.models.device import Device
 from app.models.ota_log import OtaLog
@@ -21,11 +20,17 @@ from app.models.user import User
 from app.mqtt.client import mqtt_client
 from app.mqtt.topics import get_control_topic
 from app.schemas.base import ApiResponse
+from app.services.firmware_service import (
+    FIRMWARE_DIR,
+    build_signed_firmware_url,
+    firmware_md5,
+    resolve_signed_firmware,
+)
 from app.utils.timezone import shanghai_isoformat
+from loguru import logger
 
 router = APIRouter(prefix="/ota", tags=["OTA 固件更新"])
 
-FIRMWARE_DIR = BACKEND_DIR / "data" / "firmware"
 MD5_RE = re.compile(r"^[0-9a-fA-F]{32}$")
 
 
@@ -47,9 +52,7 @@ def _build_ota_payload(version: str, url: str, md5: str) -> dict:
 
 def _build_firmware_url(request: Request, filename: str) -> str:
     base_url = settings.FIRMWARE_PUBLIC_BASE_URL.strip() or str(request.base_url)
-    if not base_url.endswith("/"):
-        base_url += "/"
-    return urljoin(base_url, f"firmware/{filename}")
+    return build_signed_firmware_url(base_url, filename)
 
 
 def _validate_push_payload(ota_data: dict) -> tuple[str, str, str, str, int | None] | ApiResponse:
@@ -191,6 +194,7 @@ async def push_ota_update(
             )
             db.add(log)
         except Exception as e:
+            logger.exception("OTA 推送失败: device_id={}", device_id)
             log = OtaLog(
                 device_id=device_id,
                 target_version=version,
@@ -201,7 +205,7 @@ async def push_ota_update(
                 remark=str(e),
             )
             db.add(log)
-            return ApiResponse(code=500, message=f"推送失败: {e}", data=None)
+            return ApiResponse(code=500, message="固件推送失败，请检查 MQTT 连接", data=None)
 
     await db.flush()
 
@@ -246,7 +250,7 @@ async def upload_firmware(
     firmware_path = FIRMWARE_DIR / filename
     firmware_path.write_bytes(content)
 
-    md5 = hashlib.md5(content).hexdigest()
+    md5 = firmware_md5(firmware_path)
     firmware_url = _build_firmware_url(request, filename)
 
     return ApiResponse(
@@ -259,6 +263,18 @@ async def upload_firmware(
             "filename": filename,
         },
     )
+
+
+@router.get("/firmware/{filename}")
+async def download_firmware(
+    filename: str,
+    expires: int,
+    signature: str,
+):
+    path = resolve_signed_firmware(filename, expires, signature)
+    if path is None:
+        raise HTTPException(status_code=403, detail="固件下载链接无效或已过期")
+    return FileResponse(path, media_type="application/octet-stream", filename=path.name)
 
 
 @router.get("/logs", response_model=ApiResponse)

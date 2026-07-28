@@ -2,7 +2,6 @@
 # 设备管理接口
 # 提供：设备握手、心跳、绑定、设备列表
 
-import secrets
 import time
 from datetime import datetime, timezone
 
@@ -11,6 +10,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import get_current_user
+from app.config import settings
 from app.db.session import get_db
 from app.models.device import Device
 from app.models.user import User
@@ -20,14 +20,15 @@ from app.schemas.device import (
     DeviceBind, DeviceUnbind, DeviceItem,
 )
 from app.services.control_status import persist_latest_control_status
+from app.services.device_credentials import (
+    authorize_handshake,
+    issue_device_token,
+    verify_device_token,
+)
 from app.services.device_service import refresh_stale_device_statuses, unbind_device
 from app.websocket.manager import ws_manager
 
 router = APIRouter(prefix="/device", tags=["设备管理"])
-
-# 设备 Token 过期时间（秒），24 小时
-DEVICE_TOKEN_EXPIRE = 86400
-
 
 @router.post("/auth", response_model=DeviceHandshakeAck)
 async def device_handshake(payload: DeviceHandshake, db: AsyncSession = Depends(get_db)):
@@ -44,9 +45,17 @@ async def device_handshake(payload: DeviceHandshake, db: AsyncSession = Depends(
     3. 若已存在则更新芯片型号和固件版本
     4. 首次握手生成设备 Token，重复握手复用已有 Token
     """
-    # 查询设备是否已存在
+    # 先验证一次性配对码或当前有效 Token，再允许创建设备或轮换凭证。
     result = await db.execute(select(Device).where(Device.device_id == payload.device_id))
     device = result.scalar_one_or_none()
+    if not await authorize_handshake(
+        db,
+        device,
+        payload.device_id,
+        payload.pairing_code,
+        payload.token,
+    ):
+        raise HTTPException(status_code=403, detail="无效的设备配对凭证")
 
     if device is None:
         # 新设备：创建设备记录
@@ -61,9 +70,7 @@ async def device_handshake(payload: DeviceHandshake, db: AsyncSession = Depends(
         device.chip_model = payload.chip_model
         device.firmware_version = payload.version
 
-    # 重复握手复用已有 Token，避免并发或在途上报被新 Token 拒绝。
-    device_token = device.token or f"dev_{secrets.token_hex(16)}"
-    device.token = device_token
+    device_token = issue_device_token(device)
     device.status = "online"
     device.last_seen = datetime.now(timezone.utc)
 
@@ -74,12 +81,16 @@ async def device_handshake(payload: DeviceHandshake, db: AsyncSession = Depends(
         msg="握手成功",
         timestamp=int(time.time()),
         token=device_token,
-        expire_time=DEVICE_TOKEN_EXPIRE,
+        expire_time=settings.DEVICE_TOKEN_EXPIRE_SECONDS,
     )
 
 
 @router.post("/{device_id}/heartbeat")
-async def device_heartbeat(payload: DeviceHeartbeat, db: AsyncSession = Depends(get_db)):
+async def device_heartbeat(
+    device_id: str,
+    payload: DeviceHeartbeat,
+    db: AsyncSession = Depends(get_db),
+):
     """
     设备心跳接口（Step 2，设备每 30 秒调用一次）
     POST /api/v1/device/{device_id}/heartbeat
@@ -87,11 +98,14 @@ async def device_heartbeat(payload: DeviceHeartbeat, db: AsyncSession = Depends(
     用于维持设备在线状态，更新 last_seen 时间戳
     验证设备 Token 确保请求合法
     """
+    if device_id != payload.device_id:
+        raise HTTPException(status_code=400, detail="路径设备 ID 与请求体不一致")
+
     # 查询设备并验证 Token
-    result = await db.execute(select(Device).where(Device.device_id == payload.device_id))
+    result = await db.execute(select(Device).where(Device.device_id == device_id))
     device = result.scalar_one_or_none()
 
-    if not device or device.token != payload.token:
+    if not verify_device_token(device, payload.token):
         raise HTTPException(status_code=401, detail="无效的设备凭证")
 
     # 更新设备在线状态和最后在线时间
@@ -99,13 +113,13 @@ async def device_heartbeat(payload: DeviceHeartbeat, db: AsyncSession = Depends(
     device.last_seen = datetime.now(timezone.utc)
     control_status = await persist_latest_control_status(
         db,
-        payload.device_id,
+        device_id,
         payload.status,
     )
     await db.flush()
 
     if control_status:
-        await ws_manager.broadcast_device_heartbeat(payload.device_id, control_status)
+        await ws_manager.broadcast_device_heartbeat(device_id, control_status)
 
     return {
         "code": 200,

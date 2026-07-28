@@ -6,6 +6,7 @@
 
 import { ref, onUnmounted } from 'vue'
 import { isDemoMode, mockConnect, mockOn, mockSend, mockDisconnect } from '@/utils/demo'
+import { getAccessToken } from '@/api/session'
 
 export function useWebSocket(url: string) {
   // WebSocket 实例
@@ -17,10 +18,14 @@ export function useWebSocket(url: string) {
   // 是否为演示模式
   const demoMode = ref(isDemoMode())
   let reconnectTimer: number | null = null
+  let heartbeatTimer: number | null = null
+  let pongTimeoutTimer: number | null = null
   let reconnectAttempts = 0
   let manuallyDisconnected = false
   const pendingMessages: { type: string; data: Record<string, unknown> }[] = []
   const MAX_RECONNECT_DELAY = 30000
+  const HEARTBEAT_INTERVAL = 30000
+  const PONG_TIMEOUT = 10000
 
   function resolveWebSocketBaseUrl() {
     const configured = import.meta.env.VITE_WS_BASE_URL as string | undefined
@@ -39,6 +44,26 @@ export function useWebSocket(url: string) {
       window.clearTimeout(reconnectTimer)
       reconnectTimer = null
     }
+  }
+
+  function clearHeartbeat() {
+    if (heartbeatTimer !== null) window.clearInterval(heartbeatTimer)
+    if (pongTimeoutTimer !== null) window.clearTimeout(pongTimeoutTimer)
+    heartbeatTimer = null
+    pongTimeoutTimer = null
+  }
+
+  function startHeartbeat() {
+    clearHeartbeat()
+    heartbeatTimer = window.setInterval(() => {
+      if (ws.value?.readyState !== WebSocket.OPEN) return
+      send('ping', {})
+      if (pongTimeoutTimer !== null) window.clearTimeout(pongTimeoutTimer)
+      pongTimeoutTimer = window.setTimeout(() => {
+        pongTimeoutTimer = null
+        ws.value?.close(4000, 'pong timeout')
+      }, PONG_TIMEOUT)
+    }, HEARTBEAT_INTERVAL)
   }
 
   function scheduleReconnect() {
@@ -68,7 +93,7 @@ export function useWebSocket(url: string) {
       // 100ms 后模拟连接成功并发送认证
       setTimeout(() => {
         connected.value = true
-        const token = localStorage.getItem('token')
+        const token = getAccessToken()
         if (token) {
           mockSend('auth', { token })
         }
@@ -87,7 +112,7 @@ export function useWebSocket(url: string) {
       connected.value = true
       reconnectAttempts = 0
       // 连接成功后立即发送认证消息（使用统一的嵌套格式）
-      const token = localStorage.getItem('token')
+      const token = getAccessToken()
       if (token) {
         send('auth', { token })
       }
@@ -95,6 +120,7 @@ export function useWebSocket(url: string) {
         const message = pendingMessages.shift()
         if (message) send(message.type, message.data)
       }
+      startHeartbeat()
     }
 
     /**
@@ -114,6 +140,10 @@ export function useWebSocket(url: string) {
           data?: Record<string, unknown>
           [key: string]: unknown
         }
+        if (msg.type === 'pong' && pongTimeoutTimer !== null) {
+          window.clearTimeout(pongTimeoutTimer)
+          pongTimeoutTimer = null
+        }
         const handlers = messageHandlers.get(msg.type) || []
         handlers.forEach((h) => h(msg.data ?? msg))
       } catch (error) {
@@ -123,6 +153,7 @@ export function useWebSocket(url: string) {
 
     // 连接关闭时更新状态
     ws.value.onclose = () => {
+      clearHeartbeat()
       connected.value = false
       ws.value = null
       scheduleReconnect()
@@ -178,6 +209,7 @@ export function useWebSocket(url: string) {
   function disconnect() {
     manuallyDisconnected = true
     clearReconnectTimer()
+    clearHeartbeat()
     // 演示模式：断开模拟连接
     if (demoMode.value) {
       mockDisconnect()

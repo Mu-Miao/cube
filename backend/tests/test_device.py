@@ -9,6 +9,9 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.device import Device
+from app.models.user import User
+from app.config import settings
+from app.services.device_service import refresh_all_stale_device_statuses
 
 
 @pytest.mark.asyncio
@@ -56,7 +59,109 @@ async def test_device_handshake_update(client: AsyncClient):
     assert resp.status_code == 200
     body = resp.json()
     assert body["token"].startswith("dev_")
-    assert body["token"] == first_resp.json()["token"]
+    assert body["token"] != first_resp.json()["token"]
+
+
+@pytest.mark.asyncio
+async def test_pairing_code_is_one_time_and_device_token_rotates(
+    client: AsyncClient,
+    db_session: AsyncSession,
+):
+    settings.ALLOW_LEGACY_DEVICE_HANDSHAKE = False
+    await client.post("/api/v1/auth/register", json={
+        "username": "pairing_admin",
+        "password": "pairing123",
+    })
+    admin = (
+        await db_session.execute(select(User).where(User.username == "pairing_admin"))
+    ).scalar_one()
+    admin.role = "admin"
+    await db_session.flush()
+    login = await client.post("/api/v1/auth/login", json={
+        "username": "pairing_admin",
+        "password": "pairing123",
+    })
+    headers = {"Authorization": f"Bearer {login.json()['data']['access_token']}"}
+
+    device_id = "PAIRING-CUBE-01"
+    code_response = await client.post(
+        "/api/v1/admin/device-pairing-codes",
+        json={"device_id": device_id},
+        headers=headers,
+    )
+    assert code_response.status_code == 200
+    stale_pairing_code = code_response.json()["data"]["pairing_code"]
+    replacement_code_response = await client.post(
+        "/api/v1/admin/device-pairing-codes",
+        json={"device_id": device_id},
+        headers=headers,
+    )
+    pairing_code = replacement_code_response.json()["data"]["pairing_code"]
+
+    stale = await client.post("/api/v1/device/auth", json={
+        "device_id": device_id,
+        "timestamp": 1713879999,
+        "type": "handshake",
+        "chip_model": "ESP32-S3",
+        "version": "v1.0.0",
+        "pairing_code": stale_pairing_code,
+    })
+    assert stale.status_code == 403
+
+    first = await client.post("/api/v1/device/auth", json={
+        "device_id": device_id,
+        "timestamp": 1713880000,
+        "type": "handshake",
+        "chip_model": "ESP32-S3",
+        "version": "v1.0.0",
+        "pairing_code": pairing_code,
+    })
+    assert first.status_code == 200
+    first_token = first.json()["token"]
+    device = (
+        await db_session.execute(select(Device).where(Device.device_id == device_id))
+    ).scalar_one()
+    assert device.token_hash.startswith("sha256$")
+    assert first_token not in device.token_hash
+
+    replay = await client.post("/api/v1/device/auth", json={
+        "device_id": device_id,
+        "timestamp": 1713880001,
+        "type": "handshake",
+        "chip_model": "ESP32-S3",
+        "version": "v1.0.0",
+        "pairing_code": pairing_code,
+    })
+    assert replay.status_code == 403
+
+    rotated = await client.post("/api/v1/device/auth", json={
+        "device_id": device_id,
+        "timestamp": 1713880002,
+        "type": "handshake",
+        "chip_model": "ESP32-S3",
+        "version": "v1.0.0",
+        "token": first_token,
+    })
+    assert rotated.status_code == 200
+    replacement_token = rotated.json()["token"]
+    assert replacement_token != first_token
+
+    heartbeat = {
+        "device_id": device_id,
+        "timestamp": 1713880030,
+        "type": "heartbeat",
+        "status": {"wifi_connected": True},
+    }
+    old_token = await client.post(
+        f"/api/v1/device/{device_id}/heartbeat",
+        json={**heartbeat, "token": first_token},
+    )
+    assert old_token.status_code == 401
+    new_token = await client.post(
+        f"/api/v1/device/{device_id}/heartbeat",
+        json={**heartbeat, "token": replacement_token},
+    )
+    assert new_token.status_code == 200
 
 
 @pytest.mark.asyncio
@@ -421,6 +526,63 @@ async def test_data_upload_does_not_refresh_stale_device_online_status(
     listed_device = next(d for d in list_resp.json()["data"] if d["device_id"] == device_id)
     assert listed_device["status"] == "offline"
     assert device.status == "offline"
+
+
+@pytest.mark.asyncio
+async def test_heartbeat_rejects_mismatched_path_device_id(
+    client: AsyncClient,
+):
+    device_id = "HEARTBEAT_PATH_01"
+    handshake = await client.post(
+        "/api/v1/device/auth",
+        json={
+            "device_id": device_id,
+            "timestamp": 1713880000,
+            "type": "handshake",
+            "chip_model": "ESP32-S3",
+            "version": "v1.0.0",
+        },
+    )
+
+    response = await client.post(
+        "/api/v1/device/OTHER_DEVICE/heartbeat",
+        json={
+            "device_id": device_id,
+            "token": handshake.json()["token"],
+            "timestamp": 1713880030,
+            "type": "heartbeat",
+            "status": {"focus_mode": False},
+        },
+    )
+
+    assert response.status_code == 400
+    assert response.json()["detail"] == "路径设备 ID 与请求体不一致"
+
+
+@pytest.mark.asyncio
+async def test_background_refresh_returns_newly_offline_device_ids(
+    db_session: AsyncSession,
+):
+    stale_device = Device(
+        device_id="BACKGROUND_STALE_01",
+        device_name="后台离线测试设备",
+        status="online",
+        last_seen=datetime.now(timezone.utc) - timedelta(minutes=10),
+    )
+    fresh_device = Device(
+        device_id="BACKGROUND_FRESH_01",
+        device_name="后台在线测试设备",
+        status="online",
+        last_seen=datetime.now(timezone.utc),
+    )
+    db_session.add_all([stale_device, fresh_device])
+    await db_session.flush()
+
+    stale_device_ids = await refresh_all_stale_device_statuses(db_session)
+
+    assert stale_device_ids == [stale_device.device_id]
+    assert stale_device.status == "offline"
+    assert fresh_device.status == "online"
 
 
 @pytest.mark.asyncio

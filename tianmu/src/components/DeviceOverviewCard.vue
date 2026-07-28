@@ -78,7 +78,7 @@ const props = defineProps<{
   humidity: number | null
   launching?: boolean
   muted?: boolean
-  transitionName?: string
+  transitionName?: string | undefined
   twinHidden?: boolean
   refreshing?: boolean
 }>()

@@ -1,4 +1,5 @@
 from fastapi import APIRouter, Depends
+from pydantic import BaseModel, Field
 from sqlalchemy import select, func
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -9,9 +10,14 @@ from app.models.user import User
 from app.models.sensor_data import SensorData
 from app.schemas.base import ApiResponse
 from app.services.device_service import refresh_stale_device_statuses
+from app.services.device_credentials import create_pairing_code
 from app.utils.timezone import shanghai_isoformat
 
 router = APIRouter(prefix="/admin", tags=["管理员"])
+
+
+class PairingCodeRequest(BaseModel):
+    device_id: str = Field(..., min_length=3, max_length=64)
 
 
 @router.get("/users", response_model=ApiResponse)
@@ -79,6 +85,23 @@ async def list_all_devices(
         for d in devices
     ]
     return ApiResponse(data=device_list)
+
+
+@router.post("/device-pairing-codes", response_model=ApiResponse)
+async def generate_device_pairing_code(
+    payload: PairingCodeRequest,
+    admin: User = Depends(get_current_admin),
+    db: AsyncSession = Depends(get_db),
+):
+    raw_code, record = await create_pairing_code(db, payload.device_id.strip(), admin.id)
+    return ApiResponse(
+        message="配对码已生成，仅本次响应可见",
+        data={
+            "device_id": record.device_id,
+            "pairing_code": raw_code,
+            "expires_at": shanghai_isoformat(record.expires_at),
+        },
+    )
 
 
 @router.delete("/devices/{device_id}", response_model=ApiResponse)

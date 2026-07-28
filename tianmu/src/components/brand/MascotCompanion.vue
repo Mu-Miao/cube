@@ -66,7 +66,7 @@ const stateMap: Record<
   }
 > = {
   boot: {
-    image: '/boot_sleep.gif',
+    image: '/boot_sleep.webp',
     label: '启动中',
     message: '正在连接桌面魔方。',
     tone: 'calm',

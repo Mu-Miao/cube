@@ -10,13 +10,17 @@ from fastapi import APIRouter, Depends, Header, HTTPException, Request
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.api.deps import get_current_user
+from app.api.deps import require_owned_device
 from app.db.session import get_db
 from app.models.device import Device
 from app.models.operation_log import OperationLog
-from app.models.user import User
+from app.mqtt.client import mqtt_client
+from app.mqtt.topics import get_control_topic
 from app.schemas.base import ApiResponse
 from app.services.device_service import refresh_stale_device_statuses
+from app.services.device_credentials import verify_device_token
+from app.services.control_queue import control_queue
+from app.websocket.manager import ws_manager
 
 router = APIRouter(prefix="/control", tags=["设备控制"])
 
@@ -24,7 +28,7 @@ router = APIRouter(prefix="/control", tags=["设备控制"])
 # 存储待执行的指令，设备通过 control_pull 轮询拉取
 # 格式：{device_id: [{"command": "light", "value": "on", "params": {}}]}
 # MVP 使用内存队列，生产环境应替换为 Redis 或数据库持久化
-command_queue: dict[str, list[dict[str, Any]]] = {}
+command_queue = control_queue.memory_queues
 
 SUPPORTED_CONTROL_COMMANDS = {
     "light": "on/off（灯光开关）",
@@ -42,7 +46,7 @@ async def send_control_command(
     device_id: str,
     command_data: dict,
     request: Request,
-    current_user: User = Depends(get_current_user),
+    device: Device = Depends(require_owned_device),
     db: AsyncSession = Depends(get_db),
 ):
     """
@@ -69,17 +73,6 @@ async def send_control_command(
       3003 - 设备已离线
     """
     # 验证设备绑定关系和在线状态
-    result = await db.execute(
-        select(Device).where(
-            Device.device_id == device_id,
-            Device.bound_user_id == current_user.id,
-        )
-    )
-    device = result.scalar_one_or_none()
-
-    if not device:
-        return ApiResponse(code=3002, message="设备未绑定", data=None)
-
     await refresh_stale_device_statuses(db, [device])
 
     if device.status != "online":
@@ -94,25 +87,48 @@ async def send_control_command(
         return ApiResponse(code=4001, message=f"不支持的控制指令：{command}", data=None)
 
     # 将指令加入该设备的队列
-    if device_id not in command_queue:
-        command_queue[device_id] = []
-
-    command_queue[device_id].append({
+    command_id = await control_queue.enqueue(device_id, command, value, params)
+    mqtt_payload = {
+        "code": 200,
+        "type": "control",
+        "timestamp": int(time.time()),
+        "command_id": command_id,
         "command": command,
         "value": value,
         "params": params,
-    })
+    }
+    channel = "mqtt"
+    try:
+        await mqtt_client.publish(
+            get_control_topic(device_id),
+            json.dumps(mqtt_payload, ensure_ascii=False).encode("utf-8"),
+        )
+    except RuntimeError:
+        # MQTT 暂不可用时保留 Stream 中的指令，设备仍可通过 HTTP 拉取。
+        channel = "http_pull"
 
     log = OperationLog(
-        user_id=current_user.id,
+        user_id=device.bound_user_id,
         device_id=device_id,
         action=f"control_{command}",
-        detail=json.dumps({"command": command, "value": value, "params": params}, ensure_ascii=False),
+        detail=json.dumps(
+            {
+                "command_id": command_id,
+                "command": command,
+                "value": value,
+                "params": params,
+                "channel": channel,
+            },
+            ensure_ascii=False,
+        ),
         ip_address=request.client.host if request.client else None,
     )
     db.add(log)
 
-    return ApiResponse(message="指令已下发")
+    return ApiResponse(
+        message="指令已下发",
+        data={"command_id": command_id, "channel": channel},
+    )
 
 
 @router.get("/{device_id}/pull")
@@ -142,7 +158,7 @@ async def pull_control_command(
     result = await db.execute(select(Device).where(Device.device_id == device_id))
     device = result.scalar_one_or_none()
 
-    if not device or device.token != device_token:
+    if not verify_device_token(device, device_token):
         return {
             "code": 401,
             "msg": "无效的设备凭证",
@@ -150,14 +166,14 @@ async def pull_control_command(
         }
 
     # 从队列中取出一条指令（FIFO）
-    queue = command_queue.get(device_id, [])
-    if queue:
-        cmd = queue.pop(0)  # 取出并移除第一条指令
+    cmd = await control_queue.pull(device_id)
+    if cmd:
         return {
             "code": 0,
             "msg": "success",
             "data": {
                 "pending": True,
+                "command_id": cmd["command_id"],
                 "command": cmd["command"],
                 "value": cmd["value"],
                 "params": cmd.get("params", {}),
@@ -195,6 +211,7 @@ async def control_acknowledge(
     }
     """
     token = ack_data.get("token", "")
+    command_id = str(ack_data.get("command_id") or "")
     command = ack_data.get("command", "")
     result_status = ack_data.get("result", "")
 
@@ -202,10 +219,16 @@ async def control_acknowledge(
     result = await db.execute(select(Device).where(Device.device_id == device_id))
     device = result.scalar_one_or_none()
 
-    if not device or device.token != token:
+    if not verify_device_token(device, token):
         raise HTTPException(status_code=401, detail="无效的设备凭证")
 
-    # TODO: 通过 WebSocket 推送执行结果给前端
-    # ws_manager.broadcast(device_id, {"type": "control_result", ...})
+    if command_id:
+        await control_queue.acknowledge(device_id, command_id)
+    await ws_manager.broadcast_control_result(
+        device_id,
+        command,
+        str(ack_data.get("value") or ""),
+        result_status,
+    )
 
     return ApiResponse(message="执行结果已接收")

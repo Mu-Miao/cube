@@ -5,8 +5,10 @@
 import pytest
 from httpx import AsyncClient
 from jose import jwt
+from sqlalchemy import select
 
 from app.config import settings
+from app.models.refresh_token import RefreshToken
 from app.models.user import User
 
 
@@ -46,10 +48,23 @@ async def test_register_strips_username(client: AsyncClient):
 
 @pytest.mark.asyncio
 async def test_register_short_password(client: AsyncClient):
-    """密码过短：少于 6 位的密码应被 Pydantic 校验拒绝"""
+    """密码过短：少于 8 位的密码应被 Pydantic 校验拒绝"""
     resp = await client.post("/api/v1/auth/register", json={
         "username": "charlie",
         "password": "12",
+    })
+    assert resp.status_code == 422
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("password", ["abcdefgh", "12345678"])
+async def test_register_requires_letters_and_digits(
+    client: AsyncClient,
+    password: str,
+):
+    resp = await client.post("/api/v1/auth/register", json={
+        "username": f"weak_{password[0]}",
+        "password": password,
     })
     assert resp.status_code == 422
 
@@ -59,11 +74,11 @@ async def test_login_success(client: AsyncClient):
     """正常登录：正确的用户名和密码应返回 JWT Token"""
     await client.post("/api/v1/auth/register", json={
         "username": "dave",
-        "password": "mypassword",
+        "password": "mypassword1",
     })
     resp = await client.post("/api/v1/auth/login", json={
         "username": "dave",
-        "password": "mypassword",
+        "password": "mypassword1",
     })
     assert resp.status_code == 200
     body = resp.json()
@@ -121,6 +136,98 @@ async def test_login_nonexistent_user(client: AsyncClient):
         "password": "whatever123",
     })
     assert resp.status_code == 401
+
+
+@pytest.mark.asyncio
+async def test_login_sets_httponly_refresh_cookie_and_rotates_it(
+    client: AsyncClient,
+    db_session,
+):
+    await client.post("/api/v1/auth/register", json={
+        "username": "refresh_user",
+        "password": "refresh123",
+    })
+    login = await client.post("/api/v1/auth/login", json={
+        "username": "refresh_user",
+        "password": "refresh123",
+    })
+    assert login.status_code == 200
+    set_cookie = login.headers["set-cookie"].lower()
+    assert "httponly" in set_cookie
+    assert "samesite=lax" in set_cookie
+    assert "path=/api/v1/auth" in set_cookie
+
+    original = client.cookies.get(settings.REFRESH_COOKIE_NAME)
+    refreshed = await client.post("/api/v1/auth/refresh")
+    assert refreshed.status_code == 200
+    replacement = client.cookies.get(settings.REFRESH_COOKIE_NAME)
+    assert replacement and replacement != original
+
+    user = (
+        await db_session.execute(select(User).where(User.username == "refresh_user"))
+    ).scalar_one()
+    records = (
+        await db_session.execute(
+            select(RefreshToken).where(RefreshToken.user_id == user.id)
+        )
+    ).scalars().all()
+    assert len(records) == 2
+    assert all(record.token_hash not in {original, replacement} for record in records)
+    assert sum(record.revoked_at is not None for record in records) == 1
+
+    replay = await client.post(
+        "/api/v1/auth/refresh",
+        cookies={settings.REFRESH_COOKIE_NAME: original},
+    )
+    assert replay.status_code == 401
+
+
+@pytest.mark.asyncio
+async def test_logout_revokes_refresh_cookie(client: AsyncClient):
+    await client.post("/api/v1/auth/register", json={
+        "username": "logout_user",
+        "password": "logout123",
+    })
+    await client.post("/api/v1/auth/login", json={
+        "username": "logout_user",
+        "password": "logout123",
+    })
+    assert client.cookies.get(settings.REFRESH_COOKIE_NAME)
+    response = await client.post("/api/v1/auth/logout")
+    assert response.status_code == 200
+    assert client.cookies.get(settings.REFRESH_COOKIE_NAME) is None
+    assert (await client.post("/api/v1/auth/refresh")).status_code == 401
+
+
+@pytest.mark.asyncio
+async def test_login_rate_limit_is_five_attempts_per_minute(client: AsyncClient):
+    for index in range(5):
+        payload = {
+            "username": f"limited_user_{index}",
+            "password": "bad-password",
+        }
+        assert (await client.post("/api/v1/auth/login", json=payload)).status_code == 401
+    blocked = await client.post("/api/v1/auth/login", json={
+        "username": "another_user",
+        "password": "bad-password",
+    })
+    assert blocked.status_code == 429
+    assert blocked.headers["retry-after"] == "60"
+
+
+@pytest.mark.asyncio
+async def test_register_rate_limit_is_three_attempts_per_minute(client: AsyncClient):
+    for index in range(3):
+        response = await client.post("/api/v1/auth/register", json={
+            "username": f"rate_user_{index}",
+            "password": "ratepass123",
+        })
+        assert response.status_code == 200
+    blocked = await client.post("/api/v1/auth/register", json={
+        "username": "rate_user_blocked",
+        "password": "ratepass123",
+    })
+    assert blocked.status_code == 429
 
 
 @pytest.mark.asyncio
