@@ -1,0 +1,445 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+    <link rel="icon" type="image/svg+xml" href="/tmzc-logo.svg" />
+    <title>智能桌面魔方 - 数字孪生环境管理系统</title>
+    <style>
+      html,
+      body,
+      #app {
+        min-height: 100%;
+      }
+
+      .app-boot-loader {
+        position: fixed;
+        inset: 0;
+        z-index: 9999;
+        display: grid;
+        place-items: center;
+        padding: 32px;
+        overflow: hidden;
+        color: rgba(245, 245, 247, 0.92);
+        background: #050506;
+        font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "SF Pro Display", "PingFang SC", "Helvetica Neue", Arial, sans-serif;
+        font-synthesis: none;
+        text-rendering: geometricPrecision;
+        -webkit-font-smoothing: antialiased;
+      }
+
+      .app-boot-loader__aurora {
+        position: absolute;
+        inset: 0;
+        pointer-events: none;
+      }
+
+      .app-boot-loader__aurora {
+        z-index: 0;
+        overflow: hidden;
+        background:
+          radial-gradient(circle at 24% 16%, rgba(48, 86, 142, 0.2), transparent 34%),
+          radial-gradient(circle at 78% 30%, rgba(55, 112, 90, 0.14), transparent 30%),
+          linear-gradient(180deg, #050506, #0a0a0d 46%, #030304);
+      }
+
+      .app-boot-loader__aurora::after {
+        content: "";
+        position: absolute;
+        inset: 0;
+        background-image: radial-gradient(rgba(255, 255, 255, 0.075) 1px, transparent 1px);
+        background-size: 24px 24px;
+        mask-image: linear-gradient(to bottom, transparent, #000 12%, #000 72%, transparent);
+        opacity: 0.34;
+      }
+
+      .app-boot-loader__orb {
+        position: absolute;
+        width: 48vw;
+        aspect-ratio: 1;
+        border-radius: 50%;
+        filter: blur(62px);
+        opacity: 0.42;
+        animation: liquid-drift 16s ease-in-out infinite alternate;
+      }
+
+      .app-boot-loader__orb--blue {
+        top: 7%;
+        right: 2%;
+        background: rgba(71, 152, 255, 0.2);
+      }
+
+      .app-boot-loader__orb--green {
+        left: 12%;
+        bottom: 4%;
+        background: rgba(64, 214, 132, 0.12);
+        animation-delay: -4s;
+      }
+
+      .app-boot-loader__orb--violet {
+        right: 22%;
+        bottom: 18%;
+        width: 32vw;
+        background: rgba(149, 129, 255, 0.1);
+        animation-delay: -8s;
+      }
+
+      .app-boot-loader__panel {
+        position: relative;
+        z-index: 2;
+      }
+
+      .app-boot-loader__panel {
+        display: grid;
+        justify-items: stretch;
+        gap: 20px;
+        width: min(390px, calc(100vw - 48px));
+        padding: 30px;
+        border: 1px solid rgba(245, 245, 247, 0.16);
+        border-radius: 30px;
+        background:
+          linear-gradient(145deg, rgba(255, 255, 255, 0.13), rgba(255, 255, 255, 0.055)),
+          rgba(11, 18, 32, 0.68);
+        box-shadow:
+          0 34px 90px rgba(0, 0, 0, 0.42),
+          inset 0 1px 0 rgba(255, 255, 255, 0.18);
+        backdrop-filter: blur(28px) saturate(1.65);
+        -webkit-backdrop-filter: blur(28px) saturate(1.65);
+      }
+
+      .app-boot-loader__animation {
+        height: 210px;
+        display: grid;
+        place-items: center;
+        overflow: visible;
+      }
+
+      .boot-cube-loader {
+        --duration: 3s;
+        --primary: #0a84ff;
+        --primary-light: #63b3ff;
+        --primary-rgba: rgba(10, 132, 255, 0);
+        width: 200px;
+        height: 320px;
+        position: relative;
+        transform: translateY(-52px) scale(0.42);
+        transform-style: preserve-3d;
+      }
+
+      .boot-cube-loader::before,
+      .boot-cube-loader::after {
+        --r: 20.5deg;
+        content: "";
+        width: 320px;
+        height: 140px;
+        position: absolute;
+        right: 32%;
+        bottom: -11px;
+        background: rgba(11, 18, 32, 0.96);
+        transform: translateZ(200px) rotate(var(--r));
+        animation: boot-mask var(--duration) linear forwards infinite;
+      }
+
+      .boot-cube-loader::after {
+        --r: -20.5deg;
+        right: auto;
+        left: 32%;
+      }
+
+      .boot-cube-loader .ground {
+        position: absolute;
+        left: -50px;
+        bottom: -120px;
+        transform: rotateY(-47deg) rotateX(-15deg) rotateZ(15deg) scale(1);
+        transform-style: preserve-3d;
+      }
+
+      .boot-cube-loader .ground div {
+        width: 200px;
+        height: 200px;
+        background: linear-gradient(45deg, var(--primary) 0%, var(--primary) 50%, var(--primary-light) 50%, var(--primary-light) 100%);
+        transform: rotateX(90deg) rotateY(0deg) translate(-48px, -120px) translateZ(100px) scale(0);
+        transform-style: preserve-3d;
+        animation: boot-ground var(--duration) linear forwards infinite;
+      }
+
+      .boot-cube-loader .ground div::before,
+      .boot-cube-loader .ground div::after {
+        --rx: 90deg;
+        --ry: 0deg;
+        --x: 44px;
+        --y: 162px;
+        --z: -50px;
+        content: "";
+        width: 156px;
+        height: 300px;
+        opacity: 0;
+        background: linear-gradient(var(--primary), var(--primary-rgba));
+        position: absolute;
+        transform: rotateX(var(--rx)) rotateY(var(--ry)) translate(var(--x), var(--y)) translateZ(var(--z));
+        animation: boot-ground-shine var(--duration) linear forwards infinite;
+      }
+
+      .boot-cube-loader .ground div::after {
+        --rx: 90deg;
+        --ry: 90deg;
+        --x: 0;
+        --y: 177px;
+        --z: 150px;
+      }
+
+      .boot-cube-loader .box {
+        --x: 0;
+        --y: 0;
+        position: absolute;
+        transform: translate(var(--x), var(--y));
+        animation: var(--duration) linear forwards infinite;
+      }
+
+      .boot-cube-loader .box div {
+        width: 48px;
+        height: 48px;
+        position: relative;
+        background-color: var(--primary);
+        transform: rotateY(-47deg) rotateX(-15deg) rotateZ(15deg) scale(0);
+        transform-style: preserve-3d;
+        animation: var(--duration) ease forwards infinite;
+      }
+
+      .boot-cube-loader .box div::before,
+      .boot-cube-loader .box div::after {
+        --rx: 90deg;
+        --ry: 0deg;
+        --z: 24px;
+        --y: -24px;
+        --x: 0;
+        content: "";
+        position: absolute;
+        width: inherit;
+        height: inherit;
+        background-color: inherit;
+        filter: brightness(var(--b, 1.2));
+        transform: rotateX(var(--rx)) rotateY(var(--ry)) translate(var(--x), var(--y)) translateZ(var(--z));
+      }
+
+      .boot-cube-loader .box div::after {
+        --rx: 0deg;
+        --ry: 90deg;
+        --x: 24px;
+        --y: 0;
+        --b: 1.4;
+      }
+
+      .boot-cube-loader .box0 { --x: -220px; --y: -120px; left: 58px; top: 108px; animation-name: boot-box-move0; }
+      .boot-cube-loader .box1 { --x: -260px; --y: 120px; left: 25px; top: 120px; animation-name: boot-box-move1; }
+      .boot-cube-loader .box2 { --x: 120px; --y: -190px; left: 58px; top: 64px; animation-name: boot-box-move2; }
+      .boot-cube-loader .box3 { --x: 280px; --y: -40px; left: 91px; top: 120px; animation-name: boot-box-move3; }
+      .boot-cube-loader .box4 { --x: 60px; --y: 200px; left: 58px; top: 132px; animation-name: boot-box-move4; }
+      .boot-cube-loader .box5 { --x: -220px; --y: -120px; left: 25px; top: 76px; animation-name: boot-box-move5; }
+      .boot-cube-loader .box6 { --x: -260px; --y: 120px; left: 91px; top: 76px; animation-name: boot-box-move6; }
+      .boot-cube-loader .box7 { --x: -240px; --y: 200px; left: 58px; top: 87px; animation-name: boot-box-move7; }
+
+      .boot-cube-loader .box0 div { animation-name: boot-box-scale0; }
+      .boot-cube-loader .box1 div { animation-name: boot-box-scale1; }
+      .boot-cube-loader .box2 div { animation-name: boot-box-scale2; }
+      .boot-cube-loader .box3 div { animation-name: boot-box-scale3; }
+      .boot-cube-loader .box4 div { animation-name: boot-box-scale4; }
+      .boot-cube-loader .box5 div { animation-name: boot-box-scale5; }
+      .boot-cube-loader .box6 div { animation-name: boot-box-scale6; }
+      .boot-cube-loader .box7 div { animation-name: boot-box-scale7; }
+
+      .app-boot-loader__content {
+        min-width: 0;
+      }
+
+      .app-boot-loader__eyebrow {
+        margin: 0 0 8px;
+        color: #63b3ff;
+        font-size: 13px;
+        font-weight: 900;
+      }
+
+      .app-boot-loader__title {
+        margin: 0;
+        color: rgba(245, 245, 247, 0.96);
+        font-size: 31px;
+        line-height: 1.12;
+        letter-spacing: -0.02em;
+      }
+
+      .app-boot-loader__text {
+        margin: 10px 0 0;
+        color: rgba(245, 245, 247, 0.62);
+        font-size: 15px;
+        line-height: 1.6;
+      }
+
+      @keyframes boot-box-move0 {
+        12% { transform: translate(var(--x), var(--y)); }
+        25%, 52% { transform: translate(0, 0); }
+        80% { transform: translate(0, -32px); }
+        90%, 100% { transform: translate(0, 188px); }
+      }
+
+      @keyframes boot-box-move1 {
+        16% { transform: translate(var(--x), var(--y)); }
+        29%, 52% { transform: translate(0, 0); }
+        80% { transform: translate(0, -32px); }
+        90%, 100% { transform: translate(0, 188px); }
+      }
+
+      @keyframes boot-box-move2 {
+        20% { transform: translate(var(--x), var(--y)); }
+        33%, 52% { transform: translate(0, 0); }
+        80% { transform: translate(0, -32px); }
+        90%, 100% { transform: translate(0, 188px); }
+      }
+
+      @keyframes boot-box-move3 {
+        24% { transform: translate(var(--x), var(--y)); }
+        37%, 52% { transform: translate(0, 0); }
+        80% { transform: translate(0, -32px); }
+        90%, 100% { transform: translate(0, 188px); }
+      }
+
+      @keyframes boot-box-move4 {
+        28% { transform: translate(var(--x), var(--y)); }
+        41%, 52% { transform: translate(0, 0); }
+        80% { transform: translate(0, -32px); }
+        90%, 100% { transform: translate(0, 188px); }
+      }
+
+      @keyframes boot-box-move5 {
+        32% { transform: translate(var(--x), var(--y)); }
+        45%, 52% { transform: translate(0, 0); }
+        80% { transform: translate(0, -32px); }
+        90%, 100% { transform: translate(0, 188px); }
+      }
+
+      @keyframes boot-box-move6 {
+        36% { transform: translate(var(--x), var(--y)); }
+        49%, 52% { transform: translate(0, 0); }
+        80% { transform: translate(0, -32px); }
+        90%, 100% { transform: translate(0, 188px); }
+      }
+
+      @keyframes boot-box-move7 {
+        40% { transform: translate(var(--x), var(--y)); }
+        53%, 52% { transform: translate(0, 0); }
+        80% { transform: translate(0, -32px); }
+        90%, 100% { transform: translate(0, 188px); }
+      }
+
+      @keyframes boot-box-scale0 {
+        6% { transform: rotateY(-47deg) rotateX(-15deg) rotateZ(15deg) scale(0); }
+        14%, 100% { transform: rotateY(-47deg) rotateX(-15deg) rotateZ(15deg) scale(1); }
+      }
+
+      @keyframes boot-box-scale1 {
+        10% { transform: rotateY(-47deg) rotateX(-15deg) rotateZ(15deg) scale(0); }
+        18%, 100% { transform: rotateY(-47deg) rotateX(-15deg) rotateZ(15deg) scale(1); }
+      }
+
+      @keyframes boot-box-scale2 {
+        14% { transform: rotateY(-47deg) rotateX(-15deg) rotateZ(15deg) scale(0); }
+        22%, 100% { transform: rotateY(-47deg) rotateX(-15deg) rotateZ(15deg) scale(1); }
+      }
+
+      @keyframes boot-box-scale3 {
+        18% { transform: rotateY(-47deg) rotateX(-15deg) rotateZ(15deg) scale(0); }
+        26%, 100% { transform: rotateY(-47deg) rotateX(-15deg) rotateZ(15deg) scale(1); }
+      }
+
+      @keyframes boot-box-scale4 {
+        22% { transform: rotateY(-47deg) rotateX(-15deg) rotateZ(15deg) scale(0); }
+        30%, 100% { transform: rotateY(-47deg) rotateX(-15deg) rotateZ(15deg) scale(1); }
+      }
+
+      @keyframes boot-box-scale5 {
+        26% { transform: rotateY(-47deg) rotateX(-15deg) rotateZ(15deg) scale(0); }
+        34%, 100% { transform: rotateY(-47deg) rotateX(-15deg) rotateZ(15deg) scale(1); }
+      }
+
+      @keyframes boot-box-scale6 {
+        30% { transform: rotateY(-47deg) rotateX(-15deg) rotateZ(15deg) scale(0); }
+        38%, 100% { transform: rotateY(-47deg) rotateX(-15deg) rotateZ(15deg) scale(1); }
+      }
+
+      @keyframes boot-box-scale7 {
+        34% { transform: rotateY(-47deg) rotateX(-15deg) rotateZ(15deg) scale(0); }
+        42%, 100% { transform: rotateY(-47deg) rotateX(-15deg) rotateZ(15deg) scale(1); }
+      }
+
+      @keyframes boot-ground {
+        0%, 65% { transform: rotateX(90deg) rotateY(0deg) translate(-48px, -120px) translateZ(100px) scale(0); }
+        75%, 90% { transform: rotateX(90deg) rotateY(0deg) translate(-48px, -120px) translateZ(100px) scale(1); }
+        100% { transform: rotateX(90deg) rotateY(0deg) translate(-48px, -120px) translateZ(100px) scale(0); }
+      }
+
+      @keyframes boot-ground-shine {
+        0%, 70% { opacity: 0; }
+        75%, 87% { opacity: 0.2; }
+        100% { opacity: 0; }
+      }
+
+      @keyframes boot-mask {
+        0%, 65% { opacity: 0; }
+        66%, 100% { opacity: 1; }
+      }
+
+      @keyframes liquid-drift {
+        from {
+          transform: translate3d(-2%, -2%, 0) scale(0.94);
+        }
+
+        to {
+          transform: translate3d(3%, 4%, 0) scale(1.08);
+        }
+      }
+
+      @media (max-width: 520px) {
+        .app-boot-loader {
+          padding: 30px 20px;
+        }
+
+        .app-boot-loader__panel {
+          width: 100%;
+          padding: 24px;
+          border-radius: 24px;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <div id="app">
+      <div class="app-boot-loader" role="status" aria-label="Loading">
+        <div class="app-boot-loader__aurora" aria-hidden="true">
+          <span class="app-boot-loader__orb app-boot-loader__orb--blue"></span>
+          <span class="app-boot-loader__orb app-boot-loader__orb--green"></span>
+          <span class="app-boot-loader__orb app-boot-loader__orb--violet"></span>
+        </div>
+        <div class="app-boot-loader__panel">
+          <div class="app-boot-loader__animation" aria-hidden="true">
+            <div class="boot-cube-loader">
+              <div class="box box0"><div></div></div>
+              <div class="box box1"><div></div></div>
+              <div class="box box2"><div></div></div>
+              <div class="box box3"><div></div></div>
+              <div class="box box4"><div></div></div>
+              <div class="box box5"><div></div></div>
+              <div class="box box6"><div></div></div>
+              <div class="box box7"><div></div></div>
+              <div class="ground"><div></div></div>
+            </div>
+          </div>
+          <div class="app-boot-loader__content">
+            <p class="app-boot-loader__eyebrow">欢迎回来</p>
+            <p class="app-boot-loader__title">正在切换控制台</p>
+            <p class="app-boot-loader__text">正在连接控制台，马上展示设备状态和环境洞察。</p>
+          </div>
+        </div>
+      </div>
+    </div>
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>

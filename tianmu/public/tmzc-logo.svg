@@ -1,0 +1,54 @@
+<svg width="512" height="512" viewBox="0 0 512 512" fill="none" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="title desc">
+  <title id="title">TMZC Smart Cube Logo</title>
+  <desc id="desc">A flat isometric cube mark for 天幕智创 with TMZC lettering.</desc>
+  <defs>
+    <linearGradient id="topFace" x1="128" y1="128" x2="384" y2="224" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#67E8F9"/>
+      <stop offset="1" stop-color="#A78BFA"/>
+    </linearGradient>
+    <linearGradient id="leftFace" x1="112" y1="158" x2="256" y2="398" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#22D3EE"/>
+      <stop offset="1" stop-color="#0E7490"/>
+    </linearGradient>
+    <linearGradient id="rightFace" x1="256" y1="224" x2="404" y2="398" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#A3E635"/>
+      <stop offset="1" stop-color="#22C55E"/>
+    </linearGradient>
+    <filter id="softShadow" x="50" y="48" width="412" height="408" filterUnits="userSpaceOnUse" color-interpolation-filters="sRGB">
+      <feDropShadow dx="0" dy="20" stdDeviation="18" flood-color="#020711" flood-opacity="0.22"/>
+    </filter>
+  </defs>
+
+  <g filter="url(#softShadow)">
+    <path d="M256 58L416 146V324L256 414L96 324V146L256 58Z" fill="#061426"/>
+    <path d="M256 58L416 146L256 236L96 146L256 58Z" fill="url(#topFace)"/>
+    <path d="M96 146L256 236V414L96 324V146Z" fill="url(#leftFace)"/>
+    <path d="M416 146L256 236V414L416 324V146Z" fill="url(#rightFace)"/>
+
+    <path d="M256 58L416 146V324L256 414L96 324V146L256 58Z" stroke="#EAFBFF" stroke-width="14" stroke-linejoin="round"/>
+    <path d="M96 146L256 236L416 146" stroke="#EAFBFF" stroke-width="9" stroke-linecap="round" stroke-linejoin="round"/>
+    <path d="M256 236V414" stroke="#EAFBFF" stroke-width="9" stroke-linecap="round"/>
+
+    <path d="M176 101L336 191" stroke="#EAFBFF" stroke-width="5" stroke-linecap="round" opacity="0.48"/>
+    <path d="M256 58V236" stroke="#EAFBFF" stroke-width="5" stroke-linecap="round" opacity="0.38"/>
+    <path d="M128 164L224 218" stroke="#EAFBFF" stroke-width="5" stroke-linecap="round" opacity="0.42"/>
+    <path d="M384 164L288 218" stroke="#EAFBFF" stroke-width="5" stroke-linecap="round" opacity="0.42"/>
+
+    <path d="M144 176L144 294" stroke="#BFF7FF" stroke-width="5" stroke-linecap="round" opacity="0.34"/>
+    <path d="M200 208L200 326" stroke="#BFF7FF" stroke-width="5" stroke-linecap="round" opacity="0.34"/>
+    <path d="M96 235L256 326" stroke="#BFF7FF" stroke-width="5" stroke-linecap="round" opacity="0.34"/>
+
+    <path d="M368 176L368 294" stroke="#E8FFD0" stroke-width="5" stroke-linecap="round" opacity="0.38"/>
+    <path d="M312 208L312 326" stroke="#E8FFD0" stroke-width="5" stroke-linecap="round" opacity="0.38"/>
+    <path d="M416 235L256 326" stroke="#E8FFD0" stroke-width="5" stroke-linecap="round" opacity="0.38"/>
+
+    <path d="M160 298L256 244L352 298V344L256 398L160 344V298Z" fill="#07152D" opacity="0.92"/>
+    <path d="M160 298L256 244L352 298L256 352L160 298Z" fill="#0B213F"/>
+    <path d="M160 298L256 352V398L160 344V298Z" fill="#0E7490"/>
+    <path d="M352 298L256 352V398L352 344V298Z" fill="#15803D"/>
+    <path d="M160 298L256 244L352 298V344L256 398L160 344V298Z" stroke="#DFFBFF" stroke-width="7" stroke-linejoin="round"/>
+
+    <text x="256" y="334" text-anchor="middle" fill="#FFFFFF" font-family="Inter, Arial, Helvetica, sans-serif" font-size="46" font-weight="800" letter-spacing="3">TMZC</text>
+    <text x="256" y="368" text-anchor="middle" fill="#BFF7FF" font-family="PingFang SC, Microsoft YaHei, Arial, sans-serif" font-size="23" font-weight="700" letter-spacing="4">天幕智创</text>
+  </g>
+</svg>
