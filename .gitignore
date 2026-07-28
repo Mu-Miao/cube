@@ -1,0 +1,15 @@
+.DS_Store
+**/.env
+**/.env.*
+!**/.env.example
+**/.serena/
+**/__pycache__/
+**/.pytest_cache/
+**/*.py[cod]
+**/*.db
+**/*.db-*
+**/node_modules/
+**/dist/
+**/coverage/
+**/test-results/
+**/playwright-report/
