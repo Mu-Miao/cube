@@ -1,6 +1,7 @@
 import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
 import { useRoute } from 'vue-router'
-import { Cpu, DataAnalysis, Monitor, Setting, Tickets } from '@element-plus/icons-vue'
+import { Cpu, DataAnalysis, Lock, Monitor, Setting, Tickets } from '@element-plus/icons-vue'
+import { useAuthStore } from '@/stores/auth'
 
 import {
   routeComponentLoaders,
@@ -13,6 +14,7 @@ const baseMenuItems = [
   { path: '/teen/control', label: '控制面板', icon: Setting },
   { path: '/teen/ai-analysis', label: 'AI 分析', icon: DataAnalysis },
   { path: '/teen/logs', label: '日志中心', icon: Tickets },
+  { path: '/teen/admin', label: '管理后台', icon: Lock, adminOnly: true },
 ]
 
 const routeNameMap: Record<string, string> = {
@@ -21,6 +23,7 @@ const routeNameMap: Record<string, string> = {
   control: '控制面板',
   'ai-analysis': 'AI 分析',
   logs: '日志中心',
+  admin: '管理后台',
 }
 
 function isPreloadableRoute(path: string): path is PreloadableRoutePath {
@@ -29,11 +32,14 @@ function isPreloadableRoute(path: string): path is PreloadableRoutePath {
 
 export function useLayoutNavigation() {
   const route = useRoute()
+  const authStore = useAuthStore()
   const prefetchedRoutes = new Set<string>()
   const navHighlightOverride = ref<string | null>(null)
   let routeWarmupTimer = 0
 
-  const menuItems = computed(() => baseMenuItems)
+  const menuItems = computed(() => (
+    baseMenuItems.filter((item) => !item.adminOnly || authStore.isAdmin)
+  ))
   const currentRoute = computed(() => navHighlightOverride.value || route.path)
   const breadcrumbs = computed(() => {
     const matched = route.matched.filter((item) => item.meta?.title)

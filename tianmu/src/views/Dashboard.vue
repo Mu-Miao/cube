@@ -466,7 +466,11 @@ const controlModeDeviceId = ref('')
 const refreshingDeviceId = ref('')
 const controlContentVisible = ref(false)
 let sensorPollingTimer = 0
+let deviceCardPollingTimer = 0
 let trendRefreshTimer = 0
+let latestDataRequestId = 0
+const subscribedDeviceIds = new Set<string>()
+const latestTimestampByDevice = new Map<string, number>()
 
 const airLegend = [
   { label: 'O2', name: '氧气', color: '#a3e635' },
@@ -556,7 +560,7 @@ const alertList = computed(() => {
     alerts.push({
       icon: '🔥',
       description: '检测到燃气泄漏，请立即处理！',
-      time: formatRelativeTime(),
+      time: formatSensorTime(sensorData.timestamp),
       level: 'danger',
     })
   }
@@ -564,7 +568,7 @@ const alertList = computed(() => {
     alerts.push({
       icon: '🌡',
       description: `温度偏高：${sensorData.temperature}℃`,
-      time: formatRelativeTime(),
+      time: formatSensorTime(sensorData.timestamp),
       level: 'warning',
     })
   }
@@ -572,7 +576,7 @@ const alertList = computed(() => {
     alerts.push({
       icon: '🌫',
       description: `空气质量差：AQI ${sensorData.aqi}`,
-      time: formatRelativeTime(),
+      time: formatSensorTime(sensorData.timestamp),
       level: 'warning',
     })
   }
@@ -580,7 +584,7 @@ const alertList = computed(() => {
     alerts.push({
       icon: '•',
       description: `PM2.5 估算偏高：${formatPm25(sensorData.pm25)} μg/m³（仅供参考）`,
-      time: formatRelativeTime(),
+      time: formatSensorTime(sensorData.timestamp),
       level: sensorData.pm25 > 75 ? 'danger' : 'warning',
     })
   }
@@ -588,7 +592,7 @@ const alertList = computed(() => {
     alerts.push({
       icon: '💨',
       description: `CO2浓度偏高：${sensorData.eco2}ppm`,
-      time: formatRelativeTime(),
+      time: formatSensorTime(sensorData.timestamp),
       level: 'warning',
     })
   }
@@ -661,8 +665,10 @@ const airParticleData = computed(() => ({
 // 辅助函数
 // ============================================================
 
-function formatRelativeTime(): string {
-  return new Date().toLocaleTimeString('zh-CN', {
+function formatSensorTime(timestamp?: string): string {
+  const date = timestamp ? new Date(timestamp) : null
+  if (!date || Number.isNaN(date.getTime())) return '--:--'
+  return date.toLocaleTimeString('zh-CN', {
     hour: '2-digit',
     minute: '2-digit',
     timeZone: BEIJING_TIME_ZONE,
@@ -705,7 +711,8 @@ async function fetchDevices() {
 
 function subscribeDevices(devices = deviceStore.devices) {
   devices.forEach((device) => {
-    if (device.device_id) {
+    if (device.device_id && !subscribedDeviceIds.has(device.device_id)) {
+      subscribedDeviceIds.add(device.device_id)
       ws.send('subscribe', { device_id: device.device_id })
     }
   })
@@ -722,6 +729,10 @@ async function fetchDeviceCardData(devices = deviceStore.devices) {
     try {
       const data = await getLatestData(device.device_id)
       if (!data) return
+      const timestamp = data.timestamp ? new Date(data.timestamp).getTime() : Date.now()
+      const latestTimestamp = latestTimestampByDevice.get(device.device_id) ?? 0
+      if (Number.isFinite(timestamp) && timestamp < latestTimestamp) return
+      latestTimestampByDevice.set(device.device_id, timestamp)
       const cachedData = deviceDataCache[device.device_id] ?? (
         deviceDataCache[device.device_id] = { temperature: null, humidity: null }
       )
@@ -734,10 +745,17 @@ async function fetchDeviceCardData(devices = deviceStore.devices) {
 }
 
 async function fetchLatestData(deviceId: string, showError = false) {
+  const requestId = ++latestDataRequestId
   try {
     const data = await getLatestData(deviceId)
-    if (data) {
-      Object.assign(sensorData, data)
+    if (data && requestId === latestDataRequestId && deviceId === selectedDeviceId.value) {
+      const timestamp = data.timestamp ? new Date(data.timestamp).getTime() : Date.now()
+      const latestTimestamp = latestTimestampByDevice.get(deviceId) ?? 0
+      if (Number.isFinite(timestamp) && timestamp < latestTimestamp) return false
+      latestTimestampByDevice.set(deviceId, timestamp)
+      Object.entries(data).forEach(([key, value]) => {
+        if (value !== undefined) Object.assign(sensorData, { [key]: value })
+      })
       applyHardwareControlState(data)
 
       // 更新设备数据缓存
@@ -963,14 +981,21 @@ onMounted(() => {
   })
 
   ws.on('auth_result', () => {
+    subscribedDeviceIds.clear()
     subscribeDevices()
   })
 
   // 订阅传感器数据推送
   ws.on('sensor_data', (data: Record<string, unknown>) => {
     const deviceId = data.device_id as string
+    const timestamp = typeof data.timestamp === 'string'
+      ? new Date(data.timestamp).getTime()
+      : Date.now()
+    latestTimestampByDevice.set(deviceId, Number.isFinite(timestamp) ? timestamp : Date.now())
     if (deviceId === selectedDeviceId.value) {
-      Object.assign(sensorData, data)
+      Object.entries(data).forEach(([key, value]) => {
+        if (value !== undefined) Object.assign(sensorData, { [key]: value })
+      })
       applyHardwareControlState(data)
       pushTrendData()
     }
@@ -990,8 +1015,13 @@ onMounted(() => {
   })
 
   // 订阅设备状态变更
-  ws.on('device_status', () => {
-    fetchDevices()
+  ws.on('device_status', (data: Record<string, unknown>) => {
+    const deviceId = typeof data.device_id === 'string' ? data.device_id : ''
+    const status = data.status === 'online' ? 'online' : data.status === 'offline' ? 'offline' : null
+    if (!deviceId || !status) return
+    deviceStore.setDevices(deviceStore.devices.map((device) => (
+      device.device_id === deviceId ? { ...device, status } : device
+    )))
   })
 
   // 建立 WebSocket 连接
@@ -1000,9 +1030,11 @@ onMounted(() => {
   sensorPollingTimer = window.setInterval(() => {
     if (selectedDeviceId.value && !refreshingDeviceId.value) {
       fetchLatestData(selectedDeviceId.value)
-      fetchDeviceCardData()
     }
   }, 5000)
+  deviceCardPollingTimer = window.setInterval(() => {
+    void fetchDeviceCardData()
+  }, 30000)
   trendRefreshTimer = window.setInterval(() => {
     void loadTrendData()
   }, 60000)
@@ -1010,6 +1042,7 @@ onMounted(() => {
 
 onUnmounted(() => {
   window.clearInterval(sensorPollingTimer)
+  window.clearInterval(deviceCardPollingTimer)
   window.clearInterval(trendRefreshTimer)
   setNavigationHighlight(null)
   ws.disconnect()

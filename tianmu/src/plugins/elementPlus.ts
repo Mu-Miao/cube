@@ -14,6 +14,7 @@ import { ElTag } from 'element-plus/es/components/tag/index.mjs'
 
 let installed = false
 let styleLoadPromise: Promise<unknown[]> | null = null
+let installPromise: Promise<void> | null = null
 
 function loadElementStyles() {
   styleLoadPromise ??= Promise.all([
@@ -44,29 +45,32 @@ function loadElementStyles() {
 
 export async function installElementPlus(app: App) {
   if (installed) return
-  await loadElementStyles()
+  installPromise ??= (async () => {
+    await loadElementStyles()
 
-  const elementComponents = [
-    ElButton,
-    ElDialog,
-    ElForm,
-    ElFormItem,
-    ElIcon,
-    ElInput,
-    ElOption,
-    ElSelect,
-    ElSlider,
-    ElSwitch,
-    ElTabPane,
-    ElTable,
-    ElTableColumn,
-    ElTabs,
-    ElTag,
-  ]
+    const elementComponents = [
+      ElButton,
+      ElDialog,
+      ElForm,
+      ElFormItem,
+      ElIcon,
+      ElInput,
+      ElOption,
+      ElSelect,
+      ElSlider,
+      ElSwitch,
+      ElTabPane,
+      ElTable,
+      ElTableColumn,
+      ElTabs,
+      ElTag,
+    ]
 
-  elementComponents.forEach((component) => {
-    app.use(component)
-  })
-  app.use(ElLoading)
-  installed = true
+    elementComponents.forEach((component) => {
+      app.use(component)
+    })
+    app.use(ElLoading)
+    installed = true
+  })()
+  await installPromise
 }

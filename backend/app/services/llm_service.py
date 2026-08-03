@@ -3,6 +3,7 @@
 # 支持 off / api / local / auto 四种模式
 # auto 模式：先试本地模型，LLM_LOCAL_TIMEOUT 秒内没结果就回退到云端 API
 
+import json
 import logging
 from typing import Optional
 
@@ -220,13 +221,17 @@ async def chat_stream(messages: list[dict]):
                     if data == "[DONE]":
                         return
                     try:
-                        import json as _json
-                        chunk = _json.loads(data)
+                        chunk = json.loads(data)
                         content = chunk.get("choices", [{}])[0].get("delta", {}).get("content", "")
                         if content:
                             yield content
-                    except Exception:
-                        pass
+                    except (
+                        json.JSONDecodeError,
+                        AttributeError,
+                        IndexError,
+                        TypeError,
+                    ) as exc:
+                        logger.debug("忽略无效的 LLM 流式数据块: {}", type(exc).__name__)
     except Exception as e:
         logger.warning("LLM 流式调用失败 [%s]: %s", base_url, e)
         yield f"\n\n（调用出错：{e}）"

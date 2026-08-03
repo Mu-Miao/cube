@@ -30,7 +30,7 @@ async def test_device_handshake_new(client: AsyncClient):
     body = resp.json()
     assert body["code"] == 200
     assert body["token"].startswith("dev_")
-    assert body["expire_time"] == 86400
+    assert body["expire_time"] == settings.DEVICE_TOKEN_EXPIRE_SECONDS
 
 
 @pytest.mark.asyncio

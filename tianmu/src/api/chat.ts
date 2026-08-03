@@ -29,7 +29,7 @@ export function streamChat(
 
   // 演示模式：使用本地模拟回复
   if (isDemoMode()) {
-    simulateResponse(messages, onChunk, onDone)
+    void simulateResponse(messages, onChunk, onDone, controller.signal)
     return controller
   }
 
@@ -107,6 +107,7 @@ async function simulateResponse(
   messages: ChatMessage[],
   onChunk: (text: string) => void,
   onDone: () => void,
+  signal: AbortSignal,
 ) {
   const lastUserMsg = messages.filter((m) => m.role === 'user').pop()?.content || ''
 
@@ -143,7 +144,9 @@ async function simulateResponse(
   // 逐字符模拟流式输出
   const chars = [...reply]
   for (const char of chars) {
+    if (signal.aborted) return
     await new Promise((resolve) => setTimeout(resolve, 30 + Math.random() * 40))
+    if (signal.aborted) return
     onChunk(char)
   }
 

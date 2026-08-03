@@ -9,6 +9,8 @@ from pydantic import BaseModel, Field, field_validator
 
 from app.utils.timezone import to_shanghai_time
 
+DEVICE_ID_PATTERN = r"^[A-Za-z0-9_-]{3,64}$"
+
 
 class DeviceHandshake(BaseModel):
     """
@@ -16,7 +18,7 @@ class DeviceHandshake(BaseModel):
     设备首次连接时发送，用于注册设备并获取临时 Token
     支持 MQTT topic: device/{device_id}/status 或 HTTP POST /api/v1/device/auth
     """
-    device_id: str = Field(..., description="设备唯一标识（建议 MAC 地址）")
+    device_id: str = Field(..., pattern=DEVICE_ID_PATTERN, description="设备唯一标识（建议 MAC 地址）")
     timestamp: int = Field(..., description="Unix 秒时间戳")
     type: str = Field("handshake", description="消息类型，固定为 handshake")
     chip_model: str = Field(..., description="芯片型号，如 ESP32-S3")
@@ -35,7 +37,7 @@ class DeviceHandshakeAck(BaseModel):
     msg: str = "握手成功"  # 返回信息
     timestamp: int  # 服务器时间戳
     token: str  # 临时身份凭证
-    expire_time: int = 86400  # Token 有效期（秒），默认 24 小时
+    expire_time: int = 14400  # Token 有效期（秒），默认 4 小时
 
 
 class DeviceHeartbeat(BaseModel):
@@ -43,7 +45,7 @@ class DeviceHeartbeat(BaseModel):
     设备心跳包（Step 2，每 30 秒发送一次）
     用于维持设备在线状态，更新 last_seen 时间戳
     """
-    device_id: str
+    device_id: str = Field(..., pattern=DEVICE_ID_PATTERN)
     token: str  # 握手获取的设备 Token
     timestamp: int
     type: str = "heartbeat"
@@ -56,8 +58,8 @@ class DeviceBind(BaseModel):
     POST /api/v1/device/bind
     需要用户 JWT 认证，将设备关联到当前用户
     """
-    device_id: str = Field(..., description="设备唯一标识")
-    device_name: str = Field("我的魔方", description="设备显示名称")
+    device_id: str = Field(..., pattern=DEVICE_ID_PATTERN, description="设备唯一标识")
+    device_name: str = Field("我的魔方", min_length=1, max_length=100, description="设备显示名称")
 
 
 class DeviceUnbind(BaseModel):
@@ -66,7 +68,11 @@ class DeviceUnbind(BaseModel):
     POST /api/v1/device/unbind
     需要用户 JWT 认证，将设备从当前用户解绑
     """
-    device_id: str = Field(..., description="设备唯一标识")
+    device_id: str = Field(..., pattern=DEVICE_ID_PATTERN, description="设备唯一标识")
+
+
+class DeviceRename(BaseModel):
+    device_name: str = Field(..., min_length=1, max_length=100)
 
 
 class DeviceItem(BaseModel):

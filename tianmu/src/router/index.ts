@@ -79,6 +79,12 @@ const router = createRouter({
           component: routeComponentLoaders['/teen/logs'],
           meta: { title: '日志中心' },
         },
+        {
+          path: 'admin',
+          name: 'admin',
+          component: routeComponentLoaders['/teen/admin'],
+          meta: { title: '管理后台', requiresAdmin: true },
+        },
       ],
     },
     {
@@ -121,6 +127,9 @@ export function authNavigationGuard(to: RouteLocationNormalized) {
   // 需要认证但用户未登录：重定向到登录页
   if (to.meta.requiresAuth && !authStore.isLoggedIn && !isDemo) {
     return { name: 'login' }
+  }
+  if (to.meta.requiresAdmin && !authStore.isAdmin) {
+    return { name: 'dashboard' }
   }
 
   // 已登录用户访问登录页或注册页：进入大众版控制台

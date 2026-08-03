@@ -23,6 +23,8 @@ export function useWebSocket(url: string) {
   let reconnectAttempts = 0
   let manuallyDisconnected = false
   const pendingMessages: { type: string; data: Record<string, unknown> }[] = []
+  const sentSubscriptions = new Set<string>()
+  const MAX_PENDING_MESSAGES = 100
   const MAX_RECONNECT_DELAY = 30000
   const HEARTBEAT_INTERVAL = 30000
   const PONG_TIMEOUT = 10000
@@ -83,12 +85,16 @@ export function useWebSocket(url: string) {
    * 服务端认证通过后才会开始推送业务消息
    */
   function connect() {
+    if (connected.value) return
     manuallyDisconnected = false
     clearReconnectTimer()
 
     // 演示模式：使用模拟 WebSocket 行为
     if (demoMode.value) {
       mockConnect()
+      messageHandlers.forEach((handlers, type) => {
+        handlers.forEach((handler) => mockOn(type, handler))
+      })
 
       // 100ms 后模拟连接成功并发送认证
       setTimeout(() => {
@@ -107,6 +113,7 @@ export function useWebSocket(url: string) {
       return
     }
     ws.value = new WebSocket(wsUrl)
+    sentSubscriptions.clear()
 
     ws.value.onopen = () => {
       connected.value = true
@@ -156,6 +163,7 @@ export function useWebSocket(url: string) {
       clearHeartbeat()
       connected.value = false
       ws.value = null
+      sentSubscriptions.clear()
       scheduleReconnect()
     }
 
@@ -172,15 +180,13 @@ export function useWebSocket(url: string) {
    * 演示模式下自动注册到模拟 WebSocket
    */
   function on(type: string, handler: (data: Record<string, unknown>) => void) {
-    // 演示模式：注册到模拟 WebSocket
-    if (demoMode.value) {
-      mockOn(type, handler)
-      return
-    }
-    // 真实模式：注册到本地处理器映射表
+    // 始终保留本地注册表，演示连接重建后可重新绑定。
     const handlers = messageHandlers.get(type) || []
     handlers.push(handler)
     messageHandlers.set(type, handlers)
+    if (demoMode.value && connected.value) {
+      mockOn(type, handler)
+    }
   }
 
   /**
@@ -196,8 +202,23 @@ export function useWebSocket(url: string) {
     }
     // 真实模式：通过真实 WebSocket 发送
     if (ws.value?.readyState !== WebSocket.OPEN) {
-      pendingMessages.push({ type, data })
+      const duplicateIndex = pendingMessages.findIndex((message) => (
+        (type === 'subscribe'
+          && message.type === type
+          && message.data.device_id === data.device_id)
+        || (['auth', 'ping'].includes(type) && message.type === type)
+      ))
+      if (duplicateIndex >= 0) {
+        pendingMessages[duplicateIndex] = { type, data }
+      } else {
+        pendingMessages.push({ type, data })
+        if (pendingMessages.length > MAX_PENDING_MESSAGES) pendingMessages.shift()
+      }
       return
+    }
+    if (type === 'subscribe' && typeof data.device_id === 'string') {
+      if (sentSubscriptions.has(data.device_id)) return
+      sentSubscriptions.add(data.device_id)
     }
     ws.value.send(JSON.stringify({ type, data }))
   }
@@ -220,6 +241,8 @@ export function useWebSocket(url: string) {
     ws.value?.close()
     ws.value = null
     connected.value = false
+    pendingMessages.length = 0
+    sentSubscriptions.clear()
   }
 
   // 组件卸载时自动断开连接，防止内存泄漏

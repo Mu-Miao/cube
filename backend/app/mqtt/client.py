@@ -102,8 +102,8 @@ class MQTTClient:
             if self._client:
                 try:
                     await self._client.__aexit__(None, None, None)
-                except Exception:
-                    pass
+                except Exception as exc:
+                    logger.debug("MQTT 旧连接清理失败: {}", type(exc).__name__)
                 self._client = None
 
             if self._running:
@@ -136,8 +136,8 @@ class MQTTClient:
         if self._client:
             try:
                 await self._client.__aexit__(None, None, None)
-            except Exception:
-                pass
+            except Exception as exc:
+                logger.debug("MQTT 断开清理失败: {}", type(exc).__name__)
             logger.info("MQTT 已断开连接")
 
 

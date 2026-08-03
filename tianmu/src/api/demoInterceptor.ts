@@ -1,6 +1,7 @@
 import type { InternalAxiosRequestConfig } from 'axios'
 import {
   isDemoMode,
+  mockDevices,
   mockBindDevice,
   mockGetDeviceList,
   mockGetLatestData,
@@ -9,7 +10,15 @@ import {
 import { getAccessToken } from './session'
 
 function mock(data: unknown): never {
-  throw { __mock__: true, response: { data } }
+  const error = new Error('Demo response')
+  Object.assign(error, { __mock__: true, response: { data } })
+  throw error
+}
+
+function demoError(detail: string): never {
+  const error = new Error(detail)
+  Object.assign(error, { response: { data: { detail } } })
+  throw error
 }
 
 export async function interceptDemoRequest(
@@ -29,13 +38,7 @@ export async function interceptDemoRequest(
   }
 
   if (url.includes('/ai/') && query?.force_llm) {
-    throw {
-      response: {
-        data: {
-          detail: '当前处于演示模式，强制 LLM 分析不会请求后端。请关闭 demo 模式后重试。',
-        },
-      },
-    }
+    demoError('当前处于演示模式，强制 LLM 分析不会请求后端。请关闭 demo 模式后重试。')
   }
   if (url.includes('/ai/') && url.endsWith('/score') && method === 'GET') {
     mock({ score: 85, level: 'good', summary: '当前室内环境整体舒适，空气质量良好。' })
@@ -73,6 +76,39 @@ export async function interceptDemoRequest(
   }
   if (url.includes('/device/list') && method === 'GET') {
     mock(await mockGetDeviceList())
+  }
+  if (url.endsWith('/admin/stats') && method === 'GET') {
+    mock({
+      user_count: 2,
+      device_count: mockDevices.length,
+      online_count: mockDevices.filter((device) => device.status === 'online').length,
+      data_count: 48,
+    })
+  }
+  if (url.endsWith('/admin/users') && method === 'GET') {
+    mock([
+      {
+        id: 1,
+        username: 'admin',
+        email: 'admin@demo.local',
+        role: 'admin',
+        is_active: true,
+        created_at: new Date().toISOString(),
+      },
+    ])
+  }
+  if (url.endsWith('/admin/devices') && method === 'GET') {
+    mock(mockDevices.map((device, index) => ({
+      id: index + 1,
+      ...device,
+      bound_user_id: 1,
+    })))
+  }
+  if (/\/admin\/users\/\d+\/status$/.test(url) && method === 'PUT') {
+    mock(null)
+  }
+  if (/\/admin\/devices\/[^/]+$/.test(url) && method === 'DELETE') {
+    mock(null)
   }
   if (url.includes('/device/bind') && method === 'POST') {
     mock(await mockBindDevice(

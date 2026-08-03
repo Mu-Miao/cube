@@ -1,9 +1,9 @@
 ## 一、整体架构
 
-设备端通过 MQTT 接收 OTA 指令，通过 HTTP 下载固件 .bin，写入 Flash 后重启。后端要做两件事：
+设备端通过 MQTT 接收 OTA 指令，通过 HTTP/HTTPS 下载固件 .bin，写入 Flash 后重启。后端要做两件事：
 
 - 跑一个 MQTT 客户端，订阅设备的状态消息，按需下发 OTA 指令
-- 提供一个 HTTP 下载地址给设备拉取固件 .bin 文件
+- 提供一个设备可访问的 HTTPS 下载地址给设备拉取固件 .bin 文件
 
 ## 二、MQTT 对接参数
 
@@ -34,7 +34,7 @@ Device ID: CUBE001  (硬编码，src/DataPool.cpp 第 63 行)
 ```json
 {
   "type": "ota_update",
-  "url": "http://your-server.com/firmware/v1.0.1/firmware.bin",
+  "url": "https://your-server.com/firmware/v1.0.1/firmware.bin",
   "version": "v1.0.1",
   "md5": "d661674684d564249523f07826253cae"
 }
@@ -42,7 +42,7 @@ Device ID: CUBE001  (硬编码，src/DataPool.cpp 第 63 行)
 
 三个字段都必填：
 
-- `url`: 固件 .bin 的 HTTP 下载地址（必须是 HTTP，不要 HTTPS，ESP32 走 HTTPS 要配根证书很麻烦）
+- `url`: 固件 `.bin` 的 HTTP/HTTPS 下载地址。生产环境统一使用 HTTPS；ESP32 固件必须配置可信根证书（或由硬件团队采用等效的安全 TLS 方案）。仅局域网联调可临时使用 HTTP，不能作为生产配置。
 - `version`: 新版本号，格式 `vX.Y.Z` 或 `X.Y.Z`，必须严格大于设备当前版本
 - `md5`: 固件 .bin 的 MD5，32 位十六进制小写，设备会据此校验完整性
 
@@ -77,7 +77,7 @@ Device ID: CUBE001  (硬编码，src/DataPool.cpp 第 63 行)
 
 固件文件就是 PlatformIO 编译产物：`.pio/build/esp32-s3-devkitm-1/firmware.bin`，约 2-4 MB。
 
-后端的 HTTP 服务器需要满足：
+后端的固件下载服务需要满足：
 
 - GET 请求返回 200 OK，body 是原始二进制
 - `Content-Length` 头必须准确，设备据此判断下载进度（缺失则设备默认按 4MB 处理）

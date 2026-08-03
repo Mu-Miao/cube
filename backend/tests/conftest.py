@@ -15,7 +15,7 @@ from app.api.v1.control import command_queue
 from app.config import settings
 from app.db.session import Base, get_db
 from app.main import app
-from app.services.rate_limit import auth_rate_limiter
+from app.services.rate_limit import auth_rate_limiter, device_rate_limiter
 from app.services.control_queue import control_queue
 
 TEST_DB_PATH = Path(__file__).parent / "test_cube.db"
@@ -32,10 +32,12 @@ def clear_command_queue():
     command_queue.clear()
     control_queue.clear_memory()
     auth_rate_limiter.clear_memory()
+    device_rate_limiter.clear_memory()
     yield
     command_queue.clear()
     control_queue.clear_memory()
     auth_rate_limiter.clear_memory()
+    device_rate_limiter.clear_memory()
 
 
 @pytest_asyncio.fixture(scope="session")
@@ -53,14 +55,24 @@ async def test_engine():
 
 @pytest_asyncio.fixture
 async def db_session(test_engine) -> AsyncGenerator[AsyncSession, None]:
-    session_factory = async_sessionmaker(
-        test_engine,
-        class_=AsyncSession,
-        expire_on_commit=False,
-    )
-    async with session_factory() as session:
-        yield session
-        await session.rollback()
+    async with test_engine.begin() as cleanup_connection:
+        for table in reversed(Base.metadata.sorted_tables):
+            await cleanup_connection.execute(table.delete())
+    async with test_engine.connect() as connection:
+        transaction = await connection.begin()
+        session_factory = async_sessionmaker(
+            bind=connection,
+            class_=AsyncSession,
+            expire_on_commit=False,
+            join_transaction_mode="create_savepoint",
+        )
+        async with session_factory() as session:
+            yield session
+            await session.close()
+        await transaction.rollback()
+    async with test_engine.begin() as cleanup_connection:
+        for table in reversed(Base.metadata.sorted_tables):
+            await cleanup_connection.execute(table.delete())
 
 
 @pytest_asyncio.fixture

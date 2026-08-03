@@ -34,7 +34,11 @@ def _jitter(
     digits: int = 1,
 ) -> float:
     base = fallback if value is None else float(value)
-    next_value = max(low, min(high, base + random.uniform(-spread, spread)))
+    # Synthetic dashboard jitter is not used for credentials or security decisions.
+    next_value = max(
+        low,
+        min(high, base + random.uniform(-spread, spread)),  # nosec B311
+    )
     return round(next_value, digits)
 
 

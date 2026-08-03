@@ -11,7 +11,7 @@ async def aggregate_weekly_days(
     device_id: str,
 ) -> list[dict]:
     """Aggregate seven days in SQL instead of loading every sensor row."""
-    dialect = db.get_bind().dialect.name
+    dialect = db.bind.dialect.name
     if dialect == "postgresql":
         local_day = cast(
             SensorData.timestamp + text("INTERVAL '8 hours'"),

@@ -1,4 +1,6 @@
 import httpx
+from loguru import logger
+
 from app.config import settings
 
 
@@ -19,6 +21,6 @@ async def get_current_weather(city: str = "上海") -> dict | None:
             )
             if resp.status_code == 200:
                 return resp.json()
-    except Exception:
-        pass
+    except Exception as exc:
+        logger.debug("天气预留接口调用失败: {}", type(exc).__name__)
     return None

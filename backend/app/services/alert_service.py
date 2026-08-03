@@ -1,33 +1,36 @@
 from typing import Optional
 
+from app.config import settings
 from app.websocket.manager import ws_manager
 
 
-ALERT_THRESHOLDS = {
-    "gas": {
-        "warning": 0.5,
-        "critical": 1.0,
-    },
-    "tvoc": {
-        "warning": 0.5,
-        "critical": 1.0,
-    },
-    "eco2": {
-        "warning": 1000,
-        "critical": 2000,
-    },
-    "mold_risk": {
-        "warning": 2,
-        "critical": 3,
-    },
-}
+def _alert_thresholds() -> dict[str, dict[str, float]]:
+    """Build thresholds per call so runtime/environment overrides take effect."""
+    return {
+        "gas": {
+            "warning": settings.GAS_WARNING_THRESHOLD,
+            "critical": settings.GAS_CRITICAL_THRESHOLD,
+        },
+        "tvoc": {
+            "warning": settings.TVOC_WARNING_THRESHOLD,
+            "critical": settings.TVOC_CRITICAL_THRESHOLD,
+        },
+        "eco2": {
+            "warning": settings.ECO2_WARNING_THRESHOLD,
+            "critical": settings.ECO2_CRITICAL_THRESHOLD,
+        },
+        "mold_risk": {
+            "warning": 2,
+            "critical": 3,
+        },
+    }
 
 
 async def check_alerts(device_id: str, sensor_data: dict) -> list[dict]:
     """检查传感器数据是否触发告警"""
     alerts = []
 
-    for field, thresholds in ALERT_THRESHOLDS.items():
+    for field, thresholds in _alert_thresholds().items():
         value = sensor_data.get(field)
         if value is None:
             continue

@@ -235,7 +235,12 @@ const latestSensorData = ref<SensorData | null>(null)
 let sensorRefreshTimer: number | undefined
 const ws = useWebSocket('/ws')
 let syncingHardwareState = false
+let colorTemperatureTimer: number | undefined
+let lightBrightnessTimer: number | undefined
+let twinAnimationFrame: number | undefined
+let twinAnimationTimer: number | undefined
 const FOCUS_CONFIRM_TIMEOUT_MS = 15_000
+const SLIDER_COMMAND_DEBOUNCE_MS = 350
 let pendingFocusMode: { value: boolean; expiresAt: number } | null = null
 
 const twinLaunchStyle = computed(() => {
@@ -428,6 +433,10 @@ async function sendCommand(command: string, value: string): Promise<boolean> {
 watch(() => lightState.on, async (newVal, oldVal) => {
   if (newVal === oldVal) return
   if (syncingHardwareState) return
+  if (!newVal) {
+    if (colorTemperatureTimer) window.clearTimeout(colorTemperatureTimer)
+    if (lightBrightnessTimer) window.clearTimeout(lightBrightnessTimer)
+  }
   toggleLoading.light = true
   const command = newVal ? 'on' : 'off'
   const ok = await sendCommand('light', command)
@@ -435,18 +444,28 @@ watch(() => lightState.on, async (newVal, oldVal) => {
   toggleLoading.light = false
 })
 
-watch(() => lightState.colorTemperature, async (newVal, oldVal) => {
+watch(() => lightState.colorTemperature, (newVal, oldVal) => {
   if (newVal === oldVal || !lightState.on) return
   if (syncingHardwareState) return
-  const ok = await sendCommand('color_temperature', String(newVal))
-  addLog(`色温 -> ${newVal}K`, ok ? 'success' : 'error')
+  if (colorTemperatureTimer) window.clearTimeout(colorTemperatureTimer)
+  colorTemperatureTimer = window.setTimeout(async () => {
+    colorTemperatureTimer = undefined
+    if (!lightState.on || syncingHardwareState) return
+    const ok = await sendCommand('color_temperature', String(newVal))
+    addLog(`色温 -> ${newVal}K`, ok ? 'success' : 'error')
+  }, SLIDER_COMMAND_DEBOUNCE_MS)
 })
 
-watch(() => lightState.brightness, async (newVal, oldVal) => {
+watch(() => lightState.brightness, (newVal, oldVal) => {
   if (newVal === oldVal || !lightState.on) return
   if (syncingHardwareState) return
-  const ok = await sendCommand('light_brightness', String(newVal))
-  addLog(`灯光亮度 -> ${newVal}%`, ok ? 'success' : 'error')
+  if (lightBrightnessTimer) window.clearTimeout(lightBrightnessTimer)
+  lightBrightnessTimer = window.setTimeout(async () => {
+    lightBrightnessTimer = undefined
+    if (!lightState.on || syncingHardwareState) return
+    const ok = await sendCommand('light_brightness', String(newVal))
+    addLog(`灯光亮度 -> ${newVal}%`, ok ? 'success' : 'error')
+  }, SLIDER_COMMAND_DEBOUNCE_MS)
 })
 
 // === 微信消息通知监听 ===
@@ -498,6 +517,7 @@ async function handleScreenBrightnessChange(val: number) {
  * 选择设备
  */
 function selectDevice(deviceId: string) {
+  syncingHardwareState = true
   selectedDeviceId.value = deviceId
   pendingFocusMode = null
   // 重置控制状态
@@ -510,6 +530,9 @@ function selectDevice(deviceId: string) {
   screenBrightness.value = 60
   loadControlLogs(deviceId)
   void fetchLatestSensorData(deviceId)
+  nextTick(() => {
+    syncingHardwareState = false
+  })
 }
 
 async function playLaunchTransition() {
@@ -537,10 +560,11 @@ async function playLaunchTransition() {
       },
       settled: false,
     }
-    requestAnimationFrame(() => {
+    twinAnimationFrame = requestAnimationFrame(() => {
       if (twinLaunchOverlay.value) twinLaunchOverlay.value.settled = true
     })
-    window.setTimeout(() => {
+    twinAnimationTimer = window.setTimeout(() => {
+      twinAnimationTimer = undefined
       twinLaunchOverlay.value = null
     }, 780)
   } catch {
@@ -565,7 +589,8 @@ function goBackToDashboard() {
     )
   }
   const demo = route.query.demo
-  router.push(demo ? { path: '/teen/dashboard', query: { demo } } : { path: '/teen/dashboard' })
+  const normalizedDemo = typeof demo === 'string' ? demo : undefined
+  router.push(normalizedDemo ? { path: '/teen/dashboard', query: { demo: normalizedDemo } } : { path: '/teen/dashboard' })
 }
 
 /**
@@ -647,6 +672,10 @@ onMounted(async () => {
 
 onUnmounted(() => {
   if (sensorRefreshTimer) window.clearInterval(sensorRefreshTimer)
+  if (colorTemperatureTimer) window.clearTimeout(colorTemperatureTimer)
+  if (lightBrightnessTimer) window.clearTimeout(lightBrightnessTimer)
+  if (twinAnimationFrame) window.cancelAnimationFrame(twinAnimationFrame)
+  if (twinAnimationTimer) window.clearTimeout(twinAnimationTimer)
 })
 </script>
 

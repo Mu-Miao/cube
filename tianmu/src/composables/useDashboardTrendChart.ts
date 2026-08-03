@@ -35,7 +35,12 @@ export function useDashboardTrendChart(selectedDeviceId: Ref<string>) {
   let chart: EChartsType | null = null
   let echartsModule: EchartsModule | null = null
   let echartsLoadPromise: Promise<EchartsModule> | null = null
+  let resizeObserver: ResizeObserver | null = null
   let requestId = 0
+
+  function resizeChart() {
+    chart?.resize()
+  }
 
   async function loadEcharts() {
     echartsLoadPromise ??= import('@/utils/slimEcharts')
@@ -49,6 +54,9 @@ export function useDashboardTrendChart(selectedDeviceId: Ref<string>) {
     if (!chartRef.value || chart) return
     chart = echarts.init(chartRef.value)
     chart.setOption(createChartOption(echarts))
+    resizeObserver = new ResizeObserver(resizeChart)
+    resizeObserver.observe(chartRef.value)
+    window.addEventListener('resize', resizeChart, { passive: true })
   }
 
   function renderChart() {
@@ -109,6 +117,9 @@ export function useDashboardTrendChart(selectedDeviceId: Ref<string>) {
 
   function disposeChart() {
     requestId += 1
+    resizeObserver?.disconnect()
+    resizeObserver = null
+    window.removeEventListener('resize', resizeChart)
     chart?.dispose()
     chart = null
   }

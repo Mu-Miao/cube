@@ -91,6 +91,7 @@ import type { FormInstance, FormRules } from 'element-plus/es/components/form/in
 import { formatApiError } from '@/api/errors'
 import { useAuthStore } from '@/stores/auth'
 import { login } from '@/api/auth'
+import { createDemoAccessToken } from '@/api/session'
 import { disableDemoMode, enableDemoMode } from '@/utils/demo'
 import MascotCompanion from '@/components/brand/MascotCompanion.vue'
 import MineradioParticleStage from '@/components/brand/MineradioParticleStage.vue'
@@ -158,7 +159,7 @@ async function handleDemoLogin() {
     enableDemoMode()
     await new Promise((resolve) => setTimeout(resolve, 300))
     authStore.setAuth({
-      token: 'demo-jwt-token-admin',
+      token: createDemoAccessToken(),
       username: 'admin',
       role: 'admin',
     })

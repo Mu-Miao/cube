@@ -88,7 +88,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, nextTick, watch } from 'vue'
+import { ref, computed, nextTick, onUnmounted, watch } from 'vue'
 import { streamChat, type ChatMessage } from '@/api/chat'
 import { useDeviceStore } from '@/stores/device'
 import mascotImg from '@/assets/mascot/role_normal.webp'
@@ -114,6 +114,7 @@ const streamDone = ref(true)
 const inputText = ref('')
 const messagesRef = ref<HTMLElement>()
 const inputRef = ref<HTMLTextAreaElement>()
+let activeController: AbortController | null = null
 
 // 快捷提问
 const quickQuestions = ['当前温度怎么样？', '空气质量如何？', '帮我开一下灯']
@@ -169,13 +170,15 @@ async function handleSend() {
   streamDone.value = false
   streamingText.value = ''
 
-  streamChat(
+  activeController?.abort()
+  activeController = streamChat(
     messages.value,
     (chunk) => {
       streamingText.value += chunk
       scrollToBottom()
     },
     () => {
+      activeController = null
       // 完成：将流式文本存入消息列表
       if (streamingText.value) {
         messages.value.push({ role: 'assistant', content: streamingText.value })
@@ -186,6 +189,7 @@ async function handleSend() {
       scrollToBottom()
     },
     (err) => {
+      activeController = null
       messages.value.push({
         role: 'assistant',
         content: `抱歉，小眠出了点问题：${err.message}。请稍后再试试~`,
@@ -198,6 +202,11 @@ async function handleSend() {
     deviceStore.selectedDeviceId || undefined,
   )
 }
+
+onUnmounted(() => {
+  activeController?.abort()
+  activeController = null
+})
 
 function sendQuick(text: string) {
   inputText.value = text

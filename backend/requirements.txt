@@ -14,7 +14,7 @@ pydantic==2.9.0
 pydantic-settings==2.5.0
 
 # JWT 认证 & 密码加密
-python-jose[cryptography]==3.3.0
+PyJWT==2.13.0
 bcrypt==5.0.0
 
 # MQTT 异步客户端

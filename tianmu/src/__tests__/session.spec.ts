@@ -20,6 +20,7 @@ function token(payload: Record<string, unknown>) {
 
 afterEach(() => {
   clearAccessToken()
+  localStorage.clear()
   vi.restoreAllMocks()
 })
 
@@ -45,6 +46,15 @@ describe('refresh-cookie session', () => {
     vi.spyOn(axios, 'post').mockRejectedValue(new Error('unauthorized'))
     await expect(bootstrapSession()).resolves.toBe(false)
     expect(getAccessToken()).toBe('')
+  })
+
+  it('restores an in-memory admin identity for persisted demo mode', async () => {
+    localStorage.setItem('demo', 'true')
+    const post = vi.spyOn(axios, 'post')
+
+    await expect(bootstrapSession()).resolves.toBe(true)
+    expect(getSessionIdentity()).toEqual({ username: 'admin', role: 'admin' })
+    expect(post).not.toHaveBeenCalled()
   })
 
   it('deduplicates concurrent refresh requests', async () => {

@@ -3,8 +3,8 @@
 # 测试用户注册、登录、Token 验证等功能
 
 import pytest
+import jwt
 from httpx import AsyncClient
-from jose import jwt
 from sqlalchemy import select
 
 from app.config import settings
@@ -213,6 +213,57 @@ async def test_login_rate_limit_is_five_attempts_per_minute(client: AsyncClient)
     })
     assert blocked.status_code == 429
     assert blocked.headers["retry-after"] == "60"
+
+
+@pytest.mark.asyncio
+async def test_login_failure_lockout_is_per_account_and_success_resets_it(
+    client: AsyncClient,
+):
+    await client.post("/api/v1/auth/register", json={
+        "username": "lockout_user",
+        "password": "correct123",
+    })
+    previous_limit = settings.LOGIN_FAILURE_LIMIT
+    settings.LOGIN_FAILURE_LIMIT = 2
+    try:
+        wrong = {"username": "lockout_user", "password": "wrong-password"}
+        assert (await client.post("/api/v1/auth/login", json=wrong)).status_code == 401
+        assert (await client.post("/api/v1/auth/login", json={
+            "username": "lockout_user",
+            "password": "correct123",
+        })).status_code == 200
+
+        assert (await client.post("/api/v1/auth/login", json=wrong)).status_code == 401
+        assert (await client.post("/api/v1/auth/login", json=wrong)).status_code == 401
+        blocked = await client.post("/api/v1/auth/login", json=wrong)
+        assert blocked.status_code == 429
+        assert blocked.headers["retry-after"] == str(settings.LOGIN_LOCKOUT_SECONDS)
+    finally:
+        settings.LOGIN_FAILURE_LIMIT = previous_limit
+
+
+@pytest.mark.asyncio
+async def test_refresh_requires_trusted_origin_in_production(client: AsyncClient):
+    await client.post("/api/v1/auth/register", json={
+        "username": "origin_user",
+        "password": "origin123",
+    })
+    await client.post("/api/v1/auth/login", json={
+        "username": "origin_user",
+        "password": "origin123",
+    })
+
+    settings.DEBUG = False
+    try:
+        rejected = await client.post("/api/v1/auth/refresh")
+        assert rejected.status_code == 403
+        allowed = await client.post(
+            "/api/v1/auth/refresh",
+            headers={"Origin": "https://tianmuzc.site"},
+        )
+        assert allowed.status_code == 200
+    finally:
+        settings.DEBUG = True
 
 
 @pytest.mark.asyncio

@@ -17,7 +17,7 @@ class Settings(BaseSettings):
     """
 
     # === 应用基础配置 ===
-    DEBUG: bool = True
+    DEBUG: bool = False
     APP_NAME: str = "智能桌面魔方 MVP"  # 应用名称
     WEB_CONCURRENCY: int = 1
 
@@ -36,9 +36,11 @@ class Settings(BaseSettings):
     REFRESH_TOKEN_EXPIRE_DAYS: int = 7
     REFRESH_COOKIE_NAME: str = "cube_refresh_token"
     REFRESH_COOKIE_SECURE: bool = False
+    LOGIN_FAILURE_LIMIT: int = 10
+    LOGIN_LOCKOUT_SECONDS: int = 15 * 60
 
     # === 设备认证配置 ===
-    DEVICE_TOKEN_EXPIRE_SECONDS: int = 86400
+    DEVICE_TOKEN_EXPIRE_SECONDS: int = 4 * 60 * 60
     DEVICE_PAIRING_CODE_EXPIRE_MINUTES: int = 10
     ALLOW_LEGACY_DEVICE_HANDSHAKE: bool = False
 
@@ -77,10 +79,14 @@ class Settings(BaseSettings):
 
     # === 数据保留策略 ===
     DATA_RETENTION_DAYS: int = 30
+    FIRMWARE_MAX_UPLOAD_BYTES: int = 10 * 1024 * 1024
+    JSON_MAX_REQUEST_BYTES: int = 1024 * 1024
 
     # === WebSocket 配置 ===
     WS_PING_INTERVAL: int = 30
     WS_MAX_CONNECTIONS: int = 100
+    WS_AUTH_TIMEOUT_SECONDS: int = 5
+    WS_MAX_UNAUTHENTICATED_CONNECTIONS: int = 10
 
     # === Redis / 演示模式 ===
     REDIS_URL: str = ""
@@ -138,6 +144,18 @@ def validate_runtime_settings() -> None:
         raise RuntimeError("WEB_CONCURRENCY 必须大于等于 1")
     if settings.DATABASE_URL.startswith("sqlite") and settings.WEB_CONCURRENCY != 1:
         raise RuntimeError("SQLite 仅支持 WEB_CONCURRENCY=1")
+    if settings.LOGIN_FAILURE_LIMIT < 1 or settings.LOGIN_LOCKOUT_SECONDS < 1:
+        raise RuntimeError("登录失败锁定阈值和时间必须大于 0")
+    if settings.DEVICE_TOKEN_EXPIRE_SECONDS < 1:
+        raise RuntimeError("设备 Token 有效期必须大于 0")
+    if settings.JSON_MAX_REQUEST_BYTES < 1:
+        raise RuntimeError("JSON 请求体上限必须大于 0")
+    if not (
+        1
+        <= settings.WS_MAX_UNAUTHENTICATED_CONNECTIONS
+        <= settings.WS_MAX_CONNECTIONS
+    ):
+        raise RuntimeError("WebSocket 未认证连接上限必须介于 1 和总连接上限之间")
 
     if not settings.DEBUG:
         if settings.DATABASE_URL.startswith("sqlite"):

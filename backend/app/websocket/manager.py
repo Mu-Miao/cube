@@ -2,7 +2,9 @@
 # WebSocket 连接管理器
 # 管理所有活跃的 WebSocket 连接、用户认证、设备订阅、消息广播
 
+import asyncio
 import json
+import time
 from typing import Any
 
 from fastapi import WebSocket
@@ -25,17 +27,29 @@ class WebSocketManager:
     def __init__(self):
         # 所有活跃连接：{websocket: {"user_id": int, "device_ids": set()}}
         self.active_connections: dict[WebSocket, dict[str, Any]] = {}
+        self._connect_lock = asyncio.Lock()
 
     async def connect(self, websocket: WebSocket) -> bool:
         """
         接受 WebSocket 连接
         连接建立后客户端需发送认证消息
         """
-        if len(self.active_connections) >= settings.WS_MAX_CONNECTIONS:
-            await websocket.close(code=1013, reason="连接数已达上限")
-            return False
-        await websocket.accept()
-        self.active_connections[websocket] = {"user_id": None, "device_ids": set()}
+        async with self._connect_lock:
+            if len(self.active_connections) >= settings.WS_MAX_CONNECTIONS:
+                await websocket.close(code=1013, reason="连接数已达上限")
+                return False
+            unauthenticated_count = sum(
+                info["user_id"] is None
+                for info in self.active_connections.values()
+            )
+            if unauthenticated_count >= settings.WS_MAX_UNAUTHENTICATED_CONNECTIONS:
+                await websocket.close(code=1013, reason="待认证连接数已达上限")
+                return False
+            await websocket.accept()
+            self.active_connections[websocket] = {
+                "user_id": None,
+                "device_ids": set(),
+            }
         return True
 
     def disconnect(self, websocket: WebSocket) -> None:
@@ -117,7 +131,7 @@ class WebSocketManager:
         message = json.dumps({
             "type": "sensor_data",
             "data": {"device_id": device_id, **data},
-            "timestamp": int(__import__("time").time() * 1000),
+            "timestamp": int(time.time() * 1000),
         })
         await self._broadcast(device_id, message)
 
@@ -129,7 +143,7 @@ class WebSocketManager:
         message = json.dumps({
             "type": "device_status",
             "data": {"device_id": device_id, "status": status},
-            "timestamp": int(__import__("time").time() * 1000),
+            "timestamp": int(time.time() * 1000),
         })
         await self._broadcast(device_id, message)
 
@@ -141,7 +155,7 @@ class WebSocketManager:
         message = json.dumps({
             "type": "device_heartbeat",
             "data": {"device_id": device_id, **status},
-            "timestamp": int(__import__("time").time() * 1000),
+            "timestamp": int(time.time() * 1000),
         })
         await self._broadcast(device_id, message)
 
@@ -157,7 +171,7 @@ class WebSocketManager:
                 "value": value,
                 "result": result,
             },
-            "timestamp": int(__import__("time").time() * 1000),
+            "timestamp": int(time.time() * 1000),
         })
         await self._broadcast(device_id, message)
 
@@ -166,7 +180,7 @@ class WebSocketManager:
         message = json.dumps({
             "type": "alert",
             "data": {"device_id": device_id, "alerts": alerts},
-            "timestamp": int(__import__("time").time() * 1000),
+            "timestamp": int(time.time() * 1000),
         })
         await self._broadcast(device_id, message)
 

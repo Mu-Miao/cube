@@ -1,4 +1,6 @@
 import httpx
+from loguru import logger
+
 from app.config import settings
 
 
@@ -19,6 +21,6 @@ async def synthesize(text: str) -> bytes | None:
             )
             if resp.status_code == 200:
                 return resp.content
-    except Exception:
-        pass
+    except Exception as exc:
+        logger.debug("TTS 预留接口调用失败: {}", type(exc).__name__)
     return None

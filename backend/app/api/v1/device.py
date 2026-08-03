@@ -5,7 +5,7 @@
 import time
 from datetime import datetime, timezone
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -17,21 +17,27 @@ from app.models.user import User
 from app.schemas.base import ApiResponse
 from app.schemas.device import (
     DeviceHandshake, DeviceHandshakeAck, DeviceHeartbeat,
-    DeviceBind, DeviceUnbind, DeviceItem,
+    DeviceBind, DeviceUnbind, DeviceItem, DeviceRename,
 )
 from app.services.control_status import persist_latest_control_status
 from app.services.device_credentials import (
     authorize_handshake,
     issue_device_token,
+    renew_device_token,
     verify_device_token,
 )
 from app.services.device_service import refresh_stale_device_statuses, unbind_device
+from app.services.rate_limit import device_rate_limiter
 from app.websocket.manager import ws_manager
 
 router = APIRouter(prefix="/device", tags=["设备管理"])
 
 @router.post("/auth", response_model=DeviceHandshakeAck)
-async def device_handshake(payload: DeviceHandshake, db: AsyncSession = Depends(get_db)):
+async def device_handshake(
+    payload: DeviceHandshake,
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+):
     """
     设备握手接口（Step 1）
     POST /api/v1/device/auth
@@ -45,6 +51,10 @@ async def device_handshake(payload: DeviceHandshake, db: AsyncSession = Depends(
     3. 若已存在则更新芯片型号和固件版本
     4. 首次握手生成设备 Token，重复握手复用已有 Token
     """
+    await device_rate_limiter.check(
+        f"handshake:{request.client.host if request.client else 'unknown'}",
+        limit=30,
+    )
     # 先验证一次性配对码或当前有效 Token，再允许创建设备或轮换凭证。
     result = await db.execute(select(Device).where(Device.device_id == payload.device_id))
     device = result.scalar_one_or_none()
@@ -89,6 +99,7 @@ async def device_handshake(payload: DeviceHandshake, db: AsyncSession = Depends(
 async def device_heartbeat(
     device_id: str,
     payload: DeviceHeartbeat,
+    request: Request,
     db: AsyncSession = Depends(get_db),
 ):
     """
@@ -100,6 +111,10 @@ async def device_heartbeat(
     """
     if device_id != payload.device_id:
         raise HTTPException(status_code=400, detail="路径设备 ID 与请求体不一致")
+    await device_rate_limiter.check(
+        f"heartbeat:{device_id}:{request.client.host if request.client else 'unknown'}",
+        limit=180,
+    )
 
     # 查询设备并验证 Token
     result = await db.execute(select(Device).where(Device.device_id == device_id))
@@ -109,6 +124,7 @@ async def device_heartbeat(
         raise HTTPException(status_code=401, detail="无效的设备凭证")
 
     # 更新设备在线状态和最后在线时间
+    renew_device_token(device)
     device.status = "online"
     device.last_seen = datetime.now(timezone.utc)
     control_status = await persist_latest_control_status(
@@ -116,7 +132,7 @@ async def device_heartbeat(
         device_id,
         payload.status,
     )
-    await db.flush()
+    await db.commit()
 
     if control_status:
         await ws_manager.broadcast_device_heartbeat(device_id, control_status)
@@ -226,7 +242,7 @@ async def unbind_device_endpoint(
 @router.put("/{device_id}/rename", response_model=ApiResponse)
 async def rename_device(
     device_id: str,
-    rename_data: dict,
+    rename_data: DeviceRename,
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
@@ -241,9 +257,7 @@ async def rename_device(
     if not device:
         return ApiResponse(code=3002, message="设备未绑定", data=None)
 
-    new_name = rename_data.get("device_name", "").strip()
-    if not new_name:
-        return ApiResponse(code=400, message="设备名称不能为空", data=None)
+    new_name = rename_data.device_name.strip()
 
     device.device_name = new_name
     await db.flush()

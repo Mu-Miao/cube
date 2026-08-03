@@ -17,7 +17,10 @@ def firmware_md5(path: Path) -> str:
     key = (stat.st_mtime_ns, stat.st_size)
     if cached and cached[:2] == key:
         return cached[2]
-    digest = hashlib.md5(path.read_bytes()).hexdigest()
+    # ESP32 OTA bootloader protocol requires MD5 metadata. The signed HTTPS
+    # download URL provides authenticity; this digest is only a compatibility
+    # checksum and is deliberately not used as a security primitive.
+    digest = hashlib.md5(path.read_bytes(), usedforsecurity=False).hexdigest()
     _metadata_cache[path] = (key[0], key[1], digest)
     return digest
 

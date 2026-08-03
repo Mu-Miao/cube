@@ -4,7 +4,13 @@
 // 支持演示模式：拦截所有 API 请求并返回模拟数据
 
 import axios from 'axios'
-import type { AxiosInstance, InternalAxiosRequestConfig, AxiosResponse, AxiosError } from 'axios'
+import type {
+  AxiosError,
+  AxiosInstance,
+  AxiosRequestConfig,
+  AxiosResponse,
+  InternalAxiosRequestConfig,
+} from 'axios'
 import { interceptDemoRequest } from './demoInterceptor'
 import {
   getAccessToken,
@@ -41,6 +47,9 @@ service.interceptors.request.use(
 // 响应拦截器：演示模式模拟响应直接返回，正常模式处理 401 错误、统一解包 { code, message, data }
 service.interceptors.response.use(
   (response: AxiosResponse) => {
+    if ((response.config as InternalAxiosRequestConfig & { preserveResponse?: boolean }).preserveResponse) {
+      return response
+    }
     const body = response.data as { code?: number; message?: string; data?: unknown }
 
     // 后端统一使用 { code, message, data } 包装格式
@@ -76,5 +85,13 @@ service.interceptors.response.use(
     return Promise.reject(error)
   }
 )
+
+/** Use when a caller explicitly needs status or response headers instead of the unwrapped API data. */
+export function requestRaw<T>(config: AxiosRequestConfig): Promise<AxiosResponse<T>> {
+  return service.request<T, AxiosResponse<T>>({
+    ...config,
+    preserveResponse: true,
+  } as AxiosRequestConfig & { preserveResponse: true })
+}
 
 export default service

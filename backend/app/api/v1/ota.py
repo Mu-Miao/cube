@@ -4,7 +4,9 @@
 
 import json
 import re
+import tempfile
 import time
+from pathlib import Path
 
 from fastapi import APIRouter, Depends, File, HTTPException, Query, Request, UploadFile
 from fastapi.responses import FileResponse
@@ -240,15 +242,42 @@ async def upload_firmware(
     if not file.filename or not file.filename.endswith(".bin"):
         return ApiResponse(code=400, message="只允许上传 .bin 固件文件", data=None)
 
-    content = await file.read()
-    if not content:
-        return ApiResponse(code=400, message="固件文件不能为空", data=None)
-
     safe_version = re.sub(r"[^0-9A-Za-z._-]", "_", version)
     filename = f"v{safe_version}.bin" if not safe_version.startswith("v") else f"{safe_version}.bin"
     FIRMWARE_DIR.mkdir(parents=True, exist_ok=True)
     firmware_path = FIRMWARE_DIR / filename
-    firmware_path.write_bytes(content)
+    content_length = request.headers.get("content-length")
+    if content_length:
+        try:
+            if int(content_length) > settings.FIRMWARE_MAX_UPLOAD_BYTES + 1024 * 1024:
+                raise HTTPException(status_code=413, detail="固件文件超过上传大小限制")
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail="Content-Length 无效") from exc
+
+    temp_path: Path | None = None
+    size = 0
+    try:
+        with tempfile.NamedTemporaryFile(
+            mode="wb",
+            prefix=".firmware-upload-",
+            suffix=".tmp",
+            dir=FIRMWARE_DIR,
+            delete=False,
+        ) as temp_file:
+            temp_path = Path(temp_file.name)
+            while chunk := await file.read(1024 * 1024):
+                size += len(chunk)
+                if size > settings.FIRMWARE_MAX_UPLOAD_BYTES:
+                    raise HTTPException(status_code=413, detail="固件文件超过上传大小限制")
+                temp_file.write(chunk)
+        if size == 0:
+            return ApiResponse(code=400, message="固件文件不能为空", data=None)
+        temp_path.replace(firmware_path)
+        temp_path = None
+    finally:
+        if temp_path is not None:
+            temp_path.unlink(missing_ok=True)
+        await file.close()
 
     md5 = firmware_md5(firmware_path)
     firmware_url = _build_firmware_url(request, filename)
@@ -259,7 +288,7 @@ async def upload_firmware(
             "version": version,
             "url": firmware_url,
             "md5": md5,
-            "size": len(content),
+            "size": size,
             "filename": filename,
         },
     )

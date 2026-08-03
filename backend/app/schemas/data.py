@@ -15,17 +15,35 @@ class SensorDataPayload(BaseModel):
     传感器数据载荷（data_report 消息中的 data 字段）
     包含所有环境传感器的读数
     """
-    temperature: float = Field(..., ge=-40, le=125, description="温度（℃）")
-    humidity: float = Field(..., ge=0, le=100, description="湿度（%RH）")
-    illuminance: float = Field(..., ge=0, le=200_000, description="光照强度（lx）")
-    aqi: float = Field(..., ge=0, le=500, description="空气质量指数")
+    temperature: Optional[float] = Field(None, ge=-40, le=125, description="温度（℃）")
+    humidity: Optional[float] = Field(None, ge=0, le=100, description="湿度（%RH）")
+    illuminance: Optional[float] = Field(None, ge=0, le=200_000, description="光照强度（lx）")
+    aqi: Optional[float] = Field(None, ge=0, le=500, description="空气质量指数")
     pm25: Optional[float] = Field(None, ge=0, le=5_000, description="PM2.5 浓度（μg/m³，机器学习估算值，仅供参考）")
-    tvoc: float = Field(..., ge=0, le=60_000, description="有机挥发物浓度")
-    eco2: float = Field(..., ge=0, le=100_000, description="CO₂ 等效浓度（ppm）")
-    mold_risk: float = Field(..., ge=0, le=3, description="霉菌风险等级（0-3）")
-    gas: float = Field(..., ge=0, le=100, description="燃气浓度（0=正常）")
+    tvoc: Optional[float] = Field(None, ge=0, le=60_000, description="有机挥发物浓度")
+    eco2: Optional[float] = Field(None, ge=0, le=100_000, description="CO₂ 等效浓度（ppm）")
+    mold_risk: Optional[float] = Field(None, ge=0, le=3, description="霉菌风险等级（0-3）")
+    gas: Optional[float] = Field(None, ge=0, le=100, description="燃气浓度（0=正常）")
     wifi_rssi: Optional[int] = Field(None, ge=-127, le=0, description="WiFi 信号强度（dBm）")
     version: Optional[str] = Field(None, description="固件版本号")
+
+    @model_validator(mode="after")
+    def require_at_least_one_sensor(self):
+        sensor_fields = (
+            "temperature",
+            "humidity",
+            "illuminance",
+            "aqi",
+            "pm25",
+            "tvoc",
+            "eco2",
+            "mold_risk",
+            "gas",
+            "wifi_rssi",
+        )
+        if all(getattr(self, field) is None for field in sensor_fields):
+            raise ValueError("至少需要提供一个传感器读数")
+        return self
 
 
 class DeviceDataReport(BaseModel):

@@ -79,8 +79,8 @@ const props = withDefaults(defineProps<{
   color: '',
 })
 
-// 生成唯一 gradient ID
-const gradientId = computed(() => `sensor-trend-${Math.random().toString(36).slice(2, 8)}`)
+// 每个组件实例只生成一次稳定 ID，避免 hydration/重渲染期间引用漂移。
+const gradientId = `sensor-trend-${crypto.randomUUID()}`
 
 // 解析主题色
 const resolvedColor = computed(() => {

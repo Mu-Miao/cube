@@ -868,8 +868,13 @@ onMounted(() => {
   })
   ws.on('sensor_data', applyRealtimeSensorData)
   ws.on('device_heartbeat', applyRealtimeHardwareState)
-  ws.on('device_status', () => {
-    if (isSignedIn.value) refreshAll()
+  ws.on('device_status', (data: Record<string, unknown>) => {
+    const deviceId = typeof data.device_id === 'string' ? data.device_id : ''
+    const status = data.status === 'online' ? 'online' : data.status === 'offline' ? 'offline' : null
+    if (!deviceId || !status) return
+    rawDevices.value = rawDevices.value.map((device) => (
+      device.device_id === deviceId ? { ...device, status } : device
+    ))
   })
   if (isSignedIn.value) {
     ws.connect()

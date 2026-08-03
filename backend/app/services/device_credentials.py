@@ -52,6 +52,13 @@ def issue_device_token(device: Device) -> str:
     return token
 
 
+def renew_device_token(device: Device) -> None:
+    """Extend a verified token without changing the token understood by firmware."""
+    device.token_expires_at = _utcnow() + timedelta(
+        seconds=settings.DEVICE_TOKEN_EXPIRE_SECONDS
+    )
+
+
 async def create_pairing_code(
     db: AsyncSession,
     device_id: str,

@@ -1,9 +1,21 @@
 import axios from 'axios'
+import { isDemoMode } from '@/utils/demoMode'
 
 const API_BASE = import.meta.env.VITE_API_BASE_URL || '/api/v1'
 let accessToken = ''
 let refreshPromise: Promise<string> | null = null
 const accessTokenListeners = new Set<(token: string) => void>()
+
+export function createDemoAccessToken() {
+  const encode = (value: Record<string, unknown>) => (
+    btoa(JSON.stringify(value)).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '')
+  )
+  return `${encode({ alg: 'none', typ: 'JWT' })}.${encode({
+    username: 'admin',
+    role: 'admin',
+    demo: true,
+  })}.demo`
+}
 
 export function getAccessToken() {
   return accessToken
@@ -69,6 +81,10 @@ export async function refreshAccessToken(): Promise<string> {
 }
 
 export async function bootstrapSession() {
+  if (isDemoMode()) {
+    setAccessToken(createDemoAccessToken())
+    return true
+  }
   try {
     await refreshAccessToken()
     return true

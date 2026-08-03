@@ -77,4 +77,27 @@ describe('WebSocket heartbeat recovery', () => {
     expect(FakeWebSocket.instances).toHaveLength(2)
     wrapper.unmount()
   })
+
+  it('caps queued messages while disconnected', () => {
+    vi.stubGlobal('WebSocket', FakeWebSocket)
+
+    let socket!: ReturnType<typeof useWebSocket>
+    const wrapper = mount(defineComponent({
+      setup() {
+        socket = useWebSocket('/ws')
+        return () => h('div')
+      },
+    }))
+
+    for (let index = 0; index < 120; index += 1) {
+      socket.send(`event-${index}`, { index })
+    }
+    socket.connect()
+    const connection = FakeWebSocket.instances[0]!
+    connection.open()
+
+    expect(connection.sent).toHaveLength(100)
+    expect(JSON.parse(connection.sent[0]!).type).toBe('event-20')
+    wrapper.unmount()
+  })
 })

@@ -16,6 +16,7 @@ from sqlalchemy import text
 from app.api.v1 import api_router
 from app.config import settings, validate_runtime_settings
 from app.db.session import async_session_factory, init_db, verify_database_migration
+from app.middleware.security import RequestBodyLimitMiddleware, SecurityHeadersMiddleware
 from app.mqtt.client import mqtt_client
 from app.mqtt.handlers import handle_mqtt_message
 from app.services.device_service import refresh_all_stale_device_statuses
@@ -45,7 +46,9 @@ async def lifespan(app: FastAPI):
         logger.info("生产数据库 Alembic 版本校验通过")
 
     # 连接 MQTT Broker（如配置了 MQTT）
-    asyncio.create_task(mqtt_client.connect(message_handler=handle_mqtt_message))
+    mqtt_task = asyncio.create_task(
+        mqtt_client.connect(message_handler=handle_mqtt_message)
+    )
 
     async def periodic_cleanup():
         retry_delay = 3600
@@ -97,11 +100,12 @@ async def lifespan(app: FastAPI):
 
     # === 关闭阶段 ===
     logger.info("正在关闭应用...")
-    for task in (cleanup_task, device_status_task):
+    for task in (mqtt_task, cleanup_task, device_status_task):
         task.cancel()
     await redis_event_bus.close()
     redis_listener_task.cancel()
     await asyncio.gather(
+        mqtt_task,
         cleanup_task,
         device_status_task,
         redis_listener_task,
@@ -132,6 +136,8 @@ app.add_middleware(
     allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
     allow_headers=["Authorization", "Content-Type", "Accept"],
 )
+app.add_middleware(RequestBodyLimitMiddleware)
+app.add_middleware(SecurityHeadersMiddleware)
 
 
 # === 注册路由 ===
@@ -154,16 +160,25 @@ async def unhandled_exception_handler(request: Request, exc: Exception):
 async def websocket_endpoint(websocket: WebSocket):
     """
     WebSocket 连接端点
-    前端通过 ws://localhost:8000/ws?token=<JWT> 连接
+    前端通过 ws://localhost:8000/ws 连接
 
     连接后流程：
     1. 接受连接
-    2. 等待客户端发送认证消息 {type: "auth", token: "JWT"}
+    2. 最多等待 5 秒接收认证消息 {type: "auth", token: "JWT"}
     3. 认证成功后处理客户端指令（subscribe、ping 等）
     """
     if not await ws_manager.connect(websocket):
         return
     try:
+        raw = await asyncio.wait_for(
+            websocket.receive_text(),
+            timeout=settings.WS_AUTH_TIMEOUT_SECONDS,
+        )
+        await handle_ws_message(websocket, raw)
+        if ws_manager.get_authenticated_user_id(websocket) is None:
+            await websocket.close(code=1008, reason="认证失败")
+            return
+
         while True:
             raw = await asyncio.wait_for(
                 websocket.receive_text(),
@@ -172,13 +187,16 @@ async def websocket_endpoint(websocket: WebSocket):
             await handle_ws_message(websocket, raw)
 
     except TimeoutError:
-        await websocket.close(code=1001, reason="心跳超时")
-        ws_manager.disconnect(websocket)
+        authenticated = ws_manager.get_authenticated_user_id(websocket) is not None
+        await websocket.close(
+            code=1001 if authenticated else 1008,
+            reason="心跳超时" if authenticated else "认证超时",
+        )
     except WebSocketDisconnect:
-        # 客户端主动断开连接
-        ws_manager.disconnect(websocket)
-    except Exception:
-        # 其他异常（如连接异常断开）
+        logger.debug("WebSocket 客户端主动断开")
+    except Exception as exc:
+        logger.debug("WebSocket 连接异常结束: {}", type(exc).__name__)
+    finally:
         ws_manager.disconnect(websocket)
 
 

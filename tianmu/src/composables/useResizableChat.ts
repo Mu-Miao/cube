@@ -1,4 +1,4 @@
-import { onMounted, onUnmounted, ref } from 'vue'
+import { onUnmounted, ref } from 'vue'
 
 const MIN_CHAT_WIDTH = 280
 const MAX_CHAT_WIDTH = 680
@@ -13,6 +13,8 @@ export function useResizableChat() {
     isDragging.value = true
     document.body.style.cursor = 'col-resize'
     document.body.style.userSelect = 'none'
+    window.addEventListener('mousemove', onResizeMove)
+    window.addEventListener('mouseup', onResizeEnd)
   }
 
   function onResizeMove(event: MouseEvent) {
@@ -26,12 +28,9 @@ export function useResizableChat() {
     isDragging.value = false
     document.body.style.cursor = ''
     document.body.style.userSelect = ''
+    window.removeEventListener('mousemove', onResizeMove)
+    window.removeEventListener('mouseup', onResizeEnd)
   }
-
-  onMounted(() => {
-    window.addEventListener('mousemove', onResizeMove)
-    window.addEventListener('mouseup', onResizeEnd)
-  })
 
   onUnmounted(() => {
     window.removeEventListener('mousemove', onResizeMove)

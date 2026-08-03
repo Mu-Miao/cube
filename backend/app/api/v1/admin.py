@@ -1,14 +1,19 @@
 from fastapi import APIRouter, Depends
 from pydantic import BaseModel, Field
-from sqlalchemy import select, func
+from sqlalchemy import delete, select, func
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import get_current_admin
 from app.db.session import get_db
 from app.models.device import Device
+from app.models.device_pairing_code import DevicePairingCode
+from app.models.operation_log import OperationLog
+from app.models.ota_log import OtaLog
 from app.models.user import User
 from app.models.sensor_data import SensorData
+from app.models.voice_log import VoiceLog
 from app.schemas.base import ApiResponse
+from app.schemas.device import DEVICE_ID_PATTERN
 from app.services.device_service import refresh_stale_device_statuses
 from app.services.device_credentials import create_pairing_code
 from app.utils.timezone import shanghai_isoformat
@@ -17,7 +22,11 @@ router = APIRouter(prefix="/admin", tags=["管理员"])
 
 
 class PairingCodeRequest(BaseModel):
-    device_id: str = Field(..., min_length=3, max_length=64)
+    device_id: str = Field(..., pattern=DEVICE_ID_PATTERN)
+
+
+class UserStatusUpdate(BaseModel):
+    is_active: bool
 
 
 @router.get("/users", response_model=ApiResponse)
@@ -45,7 +54,7 @@ async def list_all_users(
 @router.put("/users/{user_id}/status", response_model=ApiResponse)
 async def toggle_user_status(
     user_id: int,
-    status_data: dict,
+    status_data: UserStatusUpdate,
     admin: User = Depends(get_current_admin),
     db: AsyncSession = Depends(get_db),
 ):
@@ -57,7 +66,7 @@ async def toggle_user_status(
     if user.role == "admin":
         return ApiResponse(code=4003, message="不能禁用管理员", data=None)
 
-    user.is_active = status_data.get("is_active", True)
+    user.is_active = status_data.is_active
     await db.flush()
     return ApiResponse(message="用户状态已更新")
 
@@ -116,6 +125,16 @@ async def force_delete_device(
     if not device:
         return ApiResponse(code=3001, message="设备不存在", data=None)
 
+    # 这些历史表使用字符串 device_id 而非外键；删除设备时显式清理，
+    # 防止留下不可达的传感器、审计、语音、配对和 OTA 记录。
+    for model in (
+        SensorData,
+        OperationLog,
+        VoiceLog,
+        DevicePairingCode,
+        OtaLog,
+    ):
+        await db.execute(delete(model).where(model.device_id == device_id))
     await db.delete(device)
     await db.flush()
     return ApiResponse(message="设备已删除")

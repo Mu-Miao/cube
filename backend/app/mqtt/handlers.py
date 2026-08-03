@@ -17,14 +17,16 @@ from app.models.device import Device
 from app.models.ota_log import OtaLog
 from app.models.sensor_data import SensorData
 from app.mqtt.client import mqtt_client
-from app.mqtt.topics import get_status_topic, get_data_topic
+from app.mqtt.topics import get_control_topic, get_status_topic, get_data_topic
 from app.schemas.data import SensorDataPayload
+from app.schemas.device import DEVICE_ID_PATTERN
 from app.services.alert_service import check_alerts
 from app.services.control_status import normalize_control_status, persist_latest_control_status
 from app.services.control_queue import control_queue
 from app.services.device_credentials import (
     authorize_handshake,
     issue_device_token,
+    renew_device_token,
     verify_device_token,
 )
 from app.services.firmware_service import (
@@ -34,6 +36,8 @@ from app.services.firmware_service import (
 )
 from app.utils.timezone import shanghai_isoformat
 from app.websocket.manager import ws_manager
+
+DEVICE_ID_RE = re.compile(DEVICE_ID_PATTERN)
 
 
 def _normalize_pm25_key(sensor_data: dict) -> dict:
@@ -66,6 +70,9 @@ async def handle_mqtt_message(topic: str, payload: bytes) -> None:
 
     msg_type = data.get("type", "")
     device_id = data.get("device_id", "")
+    if not isinstance(device_id, str) or not DEVICE_ID_RE.fullmatch(device_id):
+        logger.warning("忽略非法设备 ID 的 MQTT 消息: topic={}, type={}", topic, msg_type)
+        return
     logger.info("收到 MQTT 消息: topic={}, type={}, device_id={}", topic, msg_type, device_id)
 
     # 根据消息类型分发处理
@@ -99,12 +106,13 @@ async def _handle_handshake(device_id: str, data: dict) -> None:
             data.get("pairing_code"),
             data.get("token"),
         ):
+            # The rejected handshake intentionally returns an empty credential.
             ack_payload = json.dumps({
                 "code": 403,
                 "type": "handshake_ack",
                 "msg": "配对凭证无效",
                 "timestamp": int(time.time()),
-                "token": "",
+                "token": str(),
                 "expire_time": 0,
             })
             await mqtt_client.publish(get_status_topic(device_id), ack_payload.encode())
@@ -165,6 +173,7 @@ async def _handle_heartbeat(device_id: str, data: dict) -> None:
             logger.warning("心跳 Token 无效: device_id={}", device_id)
             return
 
+        renew_device_token(device)
         device.status = "online"
         device.last_seen = datetime.now(timezone.utc)
         heartbeat_status = await persist_latest_control_status(
@@ -358,7 +367,7 @@ async def _handle_version_check(device_id: str, data: dict) -> None:
                 "version": data.get("current_version", ""),
                 "md5": "",
             }
-            await mqtt_client.publish(get_status_topic(device_id), json.dumps(payload).encode())
+            await mqtt_client.publish(get_control_topic(device_id), json.dumps(payload).encode())
             return
 
         if not verify_device_token(device, data.get("token")):
@@ -372,7 +381,7 @@ async def _handle_version_check(device_id: str, data: dict) -> None:
                 "version": data.get("current_version", ""),
                 "md5": "",
             }
-            await mqtt_client.publish(get_status_topic(device_id), json.dumps(payload).encode())
+            await mqtt_client.publish(get_control_topic(device_id), json.dumps(payload).encode())
             return
 
         device.status = "online"
@@ -382,7 +391,22 @@ async def _handle_version_check(device_id: str, data: dict) -> None:
         await db.commit()
 
     latest = _latest_firmware()
-    current_version = data.get("current_version", "")
+    current_version = str(data.get("current_version") or "").strip()
+    if not _parse_version(current_version):
+        payload = {
+            "code": 400,
+            "type": "ota_update",
+            "msg": "current_version 不能为空且必须包含版本号",
+            "timestamp": int(time.time()),
+            "url": "",
+            "version": current_version,
+            "md5": "",
+        }
+        await mqtt_client.publish(
+            get_control_topic(device_id),
+            json.dumps(payload, ensure_ascii=False).encode(),
+        )
+        return
     if latest and _parse_version(latest[0]) > _parse_version(current_version):
         target_version, firmware_url, firmware_md5 = latest
         payload = {
@@ -406,7 +430,7 @@ async def _handle_version_check(device_id: str, data: dict) -> None:
         }
 
     await mqtt_client.publish(
-        get_status_topic(device_id),
+        get_control_topic(device_id),
         json.dumps(payload, ensure_ascii=False).encode(),
     )
     logger.info(

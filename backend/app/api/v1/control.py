@@ -20,6 +20,7 @@ from app.schemas.base import ApiResponse
 from app.services.device_service import refresh_stale_device_statuses
 from app.services.device_credentials import verify_device_token
 from app.services.control_queue import control_queue
+from app.services.rate_limit import device_rate_limiter
 from app.websocket.manager import ws_manager
 
 router = APIRouter(prefix="/control", tags=["设备控制"])
@@ -97,16 +98,6 @@ async def send_control_command(
         "value": value,
         "params": params,
     }
-    channel = "mqtt"
-    try:
-        await mqtt_client.publish(
-            get_control_topic(device_id),
-            json.dumps(mqtt_payload, ensure_ascii=False).encode("utf-8"),
-        )
-    except RuntimeError:
-        # MQTT 暂不可用时保留 Stream 中的指令，设备仍可通过 HTTP 拉取。
-        channel = "http_pull"
-
     log = OperationLog(
         user_id=device.bound_user_id,
         device_id=device_id,
@@ -117,13 +108,37 @@ async def send_control_command(
                 "command": command,
                 "value": value,
                 "params": params,
-                "channel": channel,
+                "channel": "queued",
             },
             ensure_ascii=False,
         ),
         ip_address=request.client.host if request.client else None,
     )
     db.add(log)
+    # 先落库审计记录，再执行 MQTT 这一外部副作用。
+    await db.commit()
+
+    channel = "mqtt"
+    try:
+        await mqtt_client.publish(
+            get_control_topic(device_id),
+            json.dumps(mqtt_payload, ensure_ascii=False).encode("utf-8"),
+        )
+    except RuntimeError:
+        # MQTT 暂不可用时保留 Stream 中的指令，设备仍可通过 HTTP 拉取。
+        channel = "http_pull"
+
+    log.detail = json.dumps(
+        {
+            "command_id": command_id,
+            "command": command,
+            "value": value,
+            "params": params,
+            "channel": channel,
+        },
+        ensure_ascii=False,
+    )
+    await db.commit()
 
     return ApiResponse(
         message="指令已下发",
@@ -134,6 +149,7 @@ async def send_control_command(
 @router.get("/{device_id}/pull")
 async def pull_control_command(
     device_id: str,
+    request: Request,
     db: AsyncSession = Depends(get_db),
     authorization: str | None = Header(default=None),
 ):
@@ -149,6 +165,10 @@ async def pull_control_command(
       - 有待执行指令：pending=true + command/value/params
       - 无待执行指令：pending=false
     """
+    await device_rate_limiter.check(
+        f"control-pull:{device_id}:{request.client.host if request.client else 'unknown'}",
+        limit=180,
+    )
     # 从 Header 中解析设备 Token
     device_token = None
     if authorization and authorization.startswith("Bearer "):
@@ -192,6 +212,7 @@ async def pull_control_command(
 async def control_acknowledge(
     device_id: str,
     ack_data: dict,
+    request: Request,
     db: AsyncSession = Depends(get_db),
 ):
     """
@@ -210,6 +231,10 @@ async def control_acknowledge(
         "result": "success"
     }
     """
+    await device_rate_limiter.check(
+        f"control-ack:{device_id}:{request.client.host if request.client else 'unknown'}",
+        limit=180,
+    )
     token = ack_data.get("token", "")
     command_id = str(ack_data.get("command_id") or "")
     command = ack_data.get("command", "")

@@ -7,10 +7,11 @@ import { useAuthStore } from '@/stores/auth'
 function route(
   name: string,
   requiresAuth = false,
+  requiresAdmin = false,
 ): RouteLocationNormalized {
   return {
     name,
-    meta: { requiresAuth },
+    meta: { requiresAuth, requiresAdmin },
   } as unknown as RouteLocationNormalized
 }
 
@@ -32,5 +33,15 @@ describe('auth route guard', () => {
   it('keeps authenticated users away from login/register', () => {
     useAuthStore().setAuth({ token: 'token', username: 'alice', role: 'user' })
     expect(authNavigationGuard(route('login'))).toEqual({ path: '/public' })
+  })
+
+  it('keeps non-admin users out of the admin route', () => {
+    useAuthStore().setAuth({ token: 'token', username: 'alice', role: 'user' })
+    expect(authNavigationGuard(route('admin', true, true))).toEqual({ name: 'dashboard' })
+  })
+
+  it('allows administrators into the admin route', () => {
+    useAuthStore().setAuth({ token: 'token', username: 'root', role: 'admin' })
+    expect(authNavigationGuard(route('admin', true, true))).toBeUndefined()
   })
 })

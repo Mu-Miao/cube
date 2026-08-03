@@ -5,11 +5,11 @@
 
 import json
 import logging
-from typing import List, Optional
+from typing import List, Literal, Optional
 
 from fastapi import APIRouter, Depends
 from fastapi.responses import StreamingResponse
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -40,12 +40,12 @@ SYSTEM_PROMPT = """你是「小眠」，智能桌面魔方的 AI 小助手。你
 
 
 class ChatMessage(BaseModel):
-    role: str  # "user" | "assistant"
-    content: str
+    role: Literal["user", "assistant"]
+    content: str = Field(..., min_length=1, max_length=8000)
 
 
 class ChatRequest(BaseModel):
-    messages: List[ChatMessage]
+    messages: List[ChatMessage] = Field(..., min_length=1, max_length=50)
     device_id: Optional[str] = None  # 可选：指定当前设备，为空则自动选第一个在线设备
 
 

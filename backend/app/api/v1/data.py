@@ -5,7 +5,7 @@
 import time
 from datetime import datetime, timedelta, timezone
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from sqlalchemy import Integer, cast, extract, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -24,6 +24,7 @@ from app.services.demo_data_service import (
     is_live_demo_device,
     timestamp_age_seconds,
 )
+from app.services.rate_limit import device_rate_limiter
 from app.utils.timezone import shanghai_isoformat
 from app.websocket.manager import ws_manager
 
@@ -44,6 +45,7 @@ def _record_control_status(record: SensorData) -> dict:
 @router.post("/upload", response_model=DataUploadAck)
 async def upload_sensor_data(
     payload: DeviceDataReport,
+    request: Request,
     db: AsyncSession = Depends(get_db),
 ):
     """
@@ -59,6 +61,10 @@ async def upload_sensor_data(
 
     注意：此接口不需要 JWT，使用设备 Token 认证
     """
+    await device_rate_limiter.check(
+        f"data-upload:{payload.device_id}:{request.client.host if request.client else 'unknown'}",
+        limit=180,
+    )
     # 验证设备 Token
     result = await db.execute(select(Device).where(Device.device_id == payload.device_id))
     device = result.scalar_one_or_none()
@@ -96,8 +102,8 @@ async def upload_sensor_data(
     if payload.data.version:
         device.firmware_version = payload.data.version
 
-    # 先执行 INSERT，再立即推送；请求依赖会在接口正常返回时统一提交事务。
-    await db.flush()
+    # 先提交持久化状态，再执行 WebSocket/告警等外部副作用。
+    await db.commit()
 
     # 通过 WebSocket 推送传感器数据给前端
     await ws_manager.broadcast_sensor_data(payload.device_id, {
@@ -279,7 +285,7 @@ async def get_sensor_data_trend(
         raise HTTPException(status_code=422, detail="hours 仅支持 1、6、24、168")
 
     since = datetime.now(timezone.utc) - timedelta(hours=hours)
-    if db.get_bind().dialect.name == "postgresql":
+    if db.bind.dialect.name == "postgresql":
         epoch_seconds = cast(extract("epoch", SensorData.timestamp), Integer)
     else:
         epoch_seconds = cast(func.strftime("%s", SensorData.timestamp), Integer)

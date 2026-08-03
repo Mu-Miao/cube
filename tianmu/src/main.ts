@@ -23,11 +23,15 @@ await bootstrapSession()
 const pinia = createPinia()
 app.use(pinia)
 const authStore = useAuthStore(pinia)
-window.addEventListener('cube:auth-expired', () => {
+const handleAuthExpired = () => {
   authStore.clearAuth()
   if (router.currentRoute.value.meta.requiresAuth) {
     void router.push({ name: 'login', query: { redirect: router.currentRoute.value.fullPath } })
   }
+}
+window.addEventListener('cube:auth-expired', handleAuthExpired)
+import.meta.hot?.dispose(() => {
+  window.removeEventListener('cube:auth-expired', handleAuthExpired)
 })
 
 // 注册 Pinia（Vue 3 官方推荐的状态管理库）
