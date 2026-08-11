@@ -13,3 +13,11 @@
 **/coverage/
 **/test-results/
 **/playwright-report/
+
+# Local IDE metadata
+.idea/
+
+# Internal review and security audit reports
+cube_代码审查补充报告_20260730.md
+cube_安全审计报告_20260730.md
+cube_最终合并审查报告.md
